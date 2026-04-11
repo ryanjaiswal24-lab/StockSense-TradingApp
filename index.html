@@ -47,13 +47,20 @@
     <div class="topbar-right">
       <div class="market-pill" id="market-pill">
         <span class="market-dot"></span><span id="market-text">Connecting…</span>
+        
       </div>
-      <nav class="nav-pills">
-        <a href="#section-picks" class="nav-pill">Picks</a>
-        <a href="#section-live"  class="nav-pill">Live</a>
-        <a href="#section-ml"    class="nav-pill">ML</a>
-        <a href="#section-news"  class="nav-pill">News</a>
-      </nav>
+     <nav class="nav-pills">
+  <a href="#section-picks" class="nav-pill">Picks</a>
+  <a href="#section-live"  class="nav-pill">Live</a>
+  <a href="#section-ml"    class="nav-pill">ML</a>
+  <a href="#section-news"  class="nav-pill">News</a>
+  <a href="#section-profile" class="nav-pill">Profile</a>
+</nav>
+
+<!-- AUTH BUTTON -->
+<div id="auth-area" style="margin-left:10px;">
+  <button id="loginBtn" class="btn-ghost-sm">Login</button>
+</div>
       <button class="btn-scan" id="btn-run-scan">⟳ Scan</button>
     </div>
   </div>
@@ -224,6 +231,25 @@
           <div id="sector-grid" class="sector-grid"><span class="mover-loading">Waiting…</span></div>
         </div>
       </aside>
+    </div>
+  </div>
+</section>
+<section class="page-section" id="section-profile">
+  <div class="container">
+    <div class="sec-head">
+      <div class="sec-title-grp">
+        <span class="sec-icon">👤</span>
+        <h2 class="sec-title">Profile</h2>
+        <span class="sec-sub">Manage your account</span>
+      </div>
+    </div>
+
+    <div class="profile-card">
+      <img id="profile-pic" src="" alt="profile"/>
+      <h2 id="profile-name">Guest</h2>
+      <p id="profile-email">Not logged in</p>
+
+      <button id="logoutBtn" class="btn-primary">Logout</button>
     </div>
   </div>
 </section>

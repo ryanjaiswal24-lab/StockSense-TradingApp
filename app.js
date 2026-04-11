@@ -13,8 +13,7 @@ from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 import { ref, set } 
 from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-import { getAuth, signInAnonymously } 
-from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
 let db        = null;
 let rtRef     = null;
 let rtSet     = null;
@@ -107,6 +106,16 @@ window.addEventListener("firebase-ready", () => {
       loginBtn.style.display = "block";
       logoutBtn.style.display = "none";
     }
+    document.getElementById("profile-name").textContent = user.displayName;
+document.getElementById("profile-email").textContent = user.email;
+document.getElementById("profile-pic").src = user.photoURL;
+if (user) {
+  document.getElementById("loginBtn").style.display = "none";
+  document.getElementById("logoutBtn").style.display = "block";
+} else {
+  document.getElementById("loginBtn").style.display = "block";
+  document.getElementById("logoutBtn").style.display = "none";
+}
   });
 
 });

@@ -356,3 +356,22 @@ body {
 @media(max-width:600px) {
   .picks-grid { grid-template-columns:1fr; }
 }
+.profile-card {
+  max-width: 400px;
+  margin: 40px auto;
+  padding: 25px;
+  background: #0f172a;
+  border-radius: 16px;
+  text-align: center;
+  border: 1px solid rgba(0,255,200,0.1);
+}
+
+.profile-card img {
+  width: 80px;
+  border-radius: 50%;
+  margin-bottom: 10px;
+}
+
+#logoutBtn {
+  margin-top: 15px;
+}
