@@ -1,3 +1,5 @@
 yfinance
 firebase-admin
 newsapi-python
+scikit-learn
+pandas

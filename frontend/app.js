@@ -1,641 +1,616 @@
-/**
- * StockSense · app.js
- *
- * KEY RULES:
- *  - ALL Firebase calls happen ONLY inside or after "firebase-ready"
- *  - db / rtRef / rtOnValue are module-level, set once in firebase-ready
- *  - No duplicate listeners, no DB calls at module load time
- */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
+import {
+  getDatabase,
+  ref,
+  onValue,
+  set,
+  update,
+  get
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-// ── Firebase refs (set inside firebase-ready) ──────────────
-let db        = null;
-let rtRef     = null;
-let rtSet     = null;
-let rtOnValue = null;
+// Replace these placeholders with your real Firebase project values.
+const firebaseConfig = {
+  apiKey: "AIzaSyCbObdFKQlKp_5RsbnEw93oAFBYL3Cpp7c",
+  authDomain: "stockscene-560d7.firebaseapp.com",
+  databaseURL: "https://stockscene-560d7-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "stockscene-560d7",
+  storageBucket: "stockscene-560d7.firebasestorage.app",
+  messagingSenderId: "432599841369",
+  appId: "1:432599841369:web:54534225513a62859a0f48",
+  measurementId: "G-BK3LQEX87Z"
+};
 
-// ── App state ──────────────────────────────────────────────
-let stocks      = [];
-let livePrices  = {};
-let allNews     = [];
-let mlParams    = { threshold:3, horizon:5, mlW:50, fundW:30 };
-let picksFilter = "all";
-let picksSort   = "comp";
-let liveFilter  = "";
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+const db = getDatabase(app);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
 
-// ── Seed/demo data (shown if Firebase offline) ─────────────
-const DEMO = [
-  {ticker:"RELIANCE",  sector:"Energy",   price:2847, ret1w:2.1,  ml:0.78,fund:0.72,sent:0.18,comp:0.735,signals:["EMA cross","Vol spike","MACD bull"]},
-  {ticker:"TCS",       sector:"IT",       price:3921, ret1w:1.4,  ml:0.74,fund:0.81,sent:0.22,comp:0.713,signals:["RSI bounce","OBV rise","EMA trend"]},
-  {ticker:"HDFCBANK",  sector:"Banking",  price:1712, ret1w:3.2,  ml:0.71,fund:0.76,sent:0.14,comp:0.693,signals:["BB squeeze","Vol break","MACD cross"]},
-  {ticker:"BAJFINANCE",sector:"Finance",  price:6840, ret1w:1.8,  ml:0.69,fund:0.74,sent:0.11,comp:0.673,signals:["RSI climb","Fund growth","OBV bull"]},
-  {ticker:"BHARTIARTL",sector:"Telecom",  price:1285, ret1w:2.9,  ml:0.67,fund:0.68,sent:0.26,comp:0.658,signals:["Gap up","Stoch cross","Vol surge"]},
-  {ticker:"INFY",      sector:"IT",       price:1564, ret1w:0.8,  ml:0.63,fund:0.79,sent:0.09,comp:0.633,signals:["High ROE","Rev growth","EMA bull"]},
-  {ticker:"MARUTI",    sector:"Auto",     price:10420,ret1w:1.2,  ml:0.61,fund:0.65,sent:0.07,comp:0.613,signals:["RSI 52","MACD flat","Low PE"]},
-  {ticker:"SUNPHARMA", sector:"Pharma",   price:1632, ret1w:2.4,  ml:0.59,fund:0.62,sent:0.17,comp:0.593,signals:["BB upper","Vol avg","Sent pos"]},
-  {ticker:"TITAN",     sector:"Consumer", price:3340, ret1w:-0.6, ml:0.54,fund:0.70,sent:0.04,comp:0.553,signals:["RSI 48","Low mom","Watchlist"]},
-  {ticker:"TATAMOTORS",sector:"Auto",     price:768,  ret1w:3.8,  ml:0.51,fund:0.48,sent:0.21,comp:0.523,signals:["High beta","Sent bull","RSI 58"]},
-];
+const state = {
+  user: null,
+  stocks: {},
+  livePrices: {},
+  news: [],
+  marketStatus: null,
+  aiPicks: {},
+  listenersStarted: false
+};
 
-const DEMO_NEWS = [
-  {title:"Sensex gains 200 pts; IT stocks lead rally",         source:"Economic Times",   sent:0.32},
-  {title:"Nifty Bank outperforms; HDFC, ICICI in focus",       source:"Mint",             sent:0.18},
-  {title:"FII inflows continue for fifth consecutive session", source:"Business Standard",sent:0.25},
-  {title:"RBI holds repo rate; signals neutral stance",        source:"BloombergQuint",   sent:0.08},
-  {title:"Auto sector under pressure on global headwinds",     source:"CNBC-TV18",        sent:-0.14},
-];
+const authGate = document.getElementById("authGate");
+const appShell = document.getElementById("appShell");
+const loginBtn = document.getElementById("loginBtn");
+const logoutBtn = document.getElementById("logoutBtn");
+const authStatus = document.getElementById("authStatus");
+const picksGrid = document.getElementById("picksGrid");
+const liveGrid = document.getElementById("liveGrid");
+const newsGrid = document.getElementById("newsGrid");
+const marketPhase = document.getElementById("marketPhase");
+const marketSummary = document.getElementById("marketSummary");
+const trackedCount = document.getElementById("trackedCount");
+const lastRefresh = document.getElementById("lastRefresh");
+const profilePic = document.getElementById("profile-pic");
+const profileName = document.getElementById("profile-name");
+const profileEmail = document.getElementById("profile-email");
+const headerProfilePic = document.getElementById("profile-card-pic");
+const headerProfileName = document.getElementById("profile-card-name");
+const headerProfileEmail = document.getElementById("profile-card-email");
+const profilePill = document.getElementById("profile-pill");
+const displayNameInput = document.getElementById("displayNameInput");
+const themeAccentInput = document.getElementById("themeAccentInput");
+const saveProfileBtn = document.getElementById("saveProfileBtn");
+const profileSaveStatus = document.getElementById("profileSaveStatus");
+const portTicker = document.getElementById("port-ticker");
+const portQty = document.getElementById("port-qty");
+const portBuyPrice = document.getElementById("port-buy-price");
+const btnPortAdd = document.getElementById("btn-port-add");
+const portTbody = document.getElementById("port-tbody");
+const pmInvested = document.getElementById("pm-invested");
+const pmCurrent = document.getElementById("pm-current");
+const indexBar = document.getElementById("index-bar");
+const liveSearch = document.getElementById("live-search");
+const btnLiveSearch = document.getElementById("btn-live-search");
+const liveCount = document.getElementById("live-count");
+const liveTablesContainer = document.getElementById("live-tables-container");
+const aiGrid = document.getElementById("aiGrid");
+const newsInput = document.getElementById("news-input");
+const btnNewsClear = document.getElementById("btn-news-clear");
+const topGainers = document.getElementById("top-gainers");
+const topLosers = document.getElementById("top-losers");
+const sectorGrid = document.getElementById("sector-grid");
+const statGainers = document.getElementById("stat-gainers");
+const statLosers = document.getElementById("stat-losers");
+const statAvg = document.getElementById("stat-avg");
 
-// ════════════════════════════════════════════════════════════
-// FIREBASE READY
-// ════════════════════════════════════════════════════════════
-window.addEventListener("firebase-ready", () => {
-  db        = window._rtdb;
-  rtRef     = window._rtRef;
-  rtSet     = window._rtSet;
-  rtOnValue = window._rtOnValue;
-
-  console.log("✅ Firebase ready — starting listeners");
-
-  listenStocks();
-  listenLivePrices();
-  listenMarketStatus();
-  listenMLParams();
-  listenNews();
+loginBtn?.addEventListener("click", async () => {
+  if (authStatus) authStatus.textContent = "Opening Google sign-in...";
+  try {
+    await signInWithPopup(auth, provider);
+    if (authStatus) authStatus.textContent = "";
+  } catch (error) {
+    if (authStatus) authStatus.textContent = error.message;
+    console.error("Login error:", error);
+  }
 });
 
-// Fallback demo if Firebase doesn't respond in 4 s
-setTimeout(() => {
-  if (!stocks.length) {
-    console.warn("Firebase timeout — running demo mode");
-    stocks  = DEMO;
-    allNews = DEMO_NEWS;
-    renderPicks();
-    renderTape();
-    renderNewsFeed(DEMO_NEWS);
-    updateMoodMeter(DEMO_NEWS);
-    showToast("Demo mode — start realtime_prices.py to get live data", "err");
-  }
-}, 4000);
+logoutBtn?.addEventListener("click", async () => {
+  await signOut(auth);
+});
 
-// ════════════════════════════════════════════════════════════
-// LISTENER: /stocks  (ML picks seed data)
-// ════════════════════════════════════════════════════════════
-function listenStocks() {
-  rtOnValue(rtRef(db, "stocks"), snap => {
-    const val = snap.val();
-    if (val) {
-      stocks = Object.values(val);
-      console.log(`📊 /stocks: ${stocks.length} picks`);
+saveProfileBtn?.addEventListener("click", async () => {
+  if (!state.user) {
+    if (profileSaveStatus) profileSaveStatus.textContent = "Log in first to save profile settings.";
+    return;
+  }
+
+  const customName = displayNameInput.value.trim();
+  const accent = themeAccentInput.value;
+
+  try {
+    await update(ref(db, `users/${state.user.uid}/profile`), {
+      customName,
+      themeAccent: accent,
+      updatedAt: Date.now()
+    });
+    applyAccent(accent);
+    profileSaveStatus.textContent = "Profile settings saved.";
+  } catch (error) {
+    profileSaveStatus.textContent = "Failed to save profile settings.";
+    console.error("Profile save error:", error);
+  }
+});
+
+btnPortAdd?.addEventListener("click", async () => {
+  if (!state.user) {
+    alert("Log in first to save portfolio data.");
+    return;
+  }
+
+  const ticker = portTicker?.value.trim().toUpperCase();
+  const qty = Number(portQty?.value || 0);
+  const buyPrice = Number(portBuyPrice?.value || 0);
+
+  if (!ticker || qty <= 0 || buyPrice <= 0) {
+    alert("Enter a valid ticker, quantity and buy price.");
+    return;
+  }
+
+  const holding = {
+    ticker,
+    qty,
+    buyPrice,
+    addedAt: Date.now()
+  };
+
+  try {
+    await set(ref(db, `users/${state.user.uid}/portfolio/${ticker}`), holding);
+    loadPortfolio();
+    if (portTicker) portTicker.value = "";
+    if (portQty) portQty.value = "";
+    if (portBuyPrice) portBuyPrice.value = "";
+  } catch (error) {
+    console.error("Portfolio save error:", error);
+    alert("Failed to save portfolio item.");
+  }
+});
+
+
+document.querySelectorAll(".nav-pill").forEach((button) => {
+  button.addEventListener("click", (e) => {
+    e.preventDefault();
+    activateTab(button.dataset.tab);
+  });
+});
+
+liveSearch?.addEventListener("input", renderDashboard);
+btnLiveSearch?.addEventListener("click", renderDashboard);
+newsInput?.addEventListener("input", renderNews);
+btnNewsClear?.addEventListener("click", () => {
+  if (newsInput) newsInput.value = "";
+  renderNews();
+});
+
+onAuthStateChanged(auth, async (user) => {
+  state.user = user;
+
+  if (!user) {
+    if (authGate) {
+      authGate.classList.remove("hidden");
+      appShell?.classList.add("hidden");
     } else {
-      // Seed on first run
-      DEMO.forEach(s => rtSet(rtRef(db, "stocks/" + s.ticker), s));
-      stocks = DEMO;
+      appShell?.classList.remove("hidden");
     }
-    renderPicks();
-    renderTape();
-  });
-}
-
-// ════════════════════════════════════════════════════════════
-// LISTENER: /live_prices  (real-time NSE prices)
-// ════════════════════════════════════════════════════════════
-function listenLivePrices() {
-  rtOnValue(rtRef(db, "live_prices"), snap => {
-    const val = snap.val();
-    if (!val) return;
-    livePrices = val;
-    console.log(`💹 /live_prices: ${Object.keys(val).length} stocks`);
-
-    updateLastSync();
-    renderLiveTable();
-    patchPickPrices();
-    patchTapePrices();
-    updateHeroStats();
-    updateSidebar();
-  });
-}
-
-// ════════════════════════════════════════════════════════════
-// LISTENER: /market_status
-// ════════════════════════════════════════════════════════════
-function listenMarketStatus() {
-  rtOnValue(rtRef(db, "market_status"), snap => {
-    const val = snap.val();
-    if (!val) return;
-    console.log("🏦 /market_status:", val);
-
-    const pill = document.getElementById("market-pill");
-    const text = document.getElementById("market-text");
-    const open = !!val.is_market_open;
-
-    pill.className   = "market-pill " + (open ? "open" : "closed");
-    text.textContent = open
-      ? `Open · ▲${val.gainers || 0} ▼${val.losers || 0}`
-      : `Closed · ▲${val.gainers || 0} ▼${val.losers || 0}`;
-  });
-}
-
-// ════════════════════════════════════════════════════════════
-// LISTENER: /ml_params  (synced slider state)
-// ════════════════════════════════════════════════════════════
-function listenMLParams() {
-  rtOnValue(rtRef(db, "ml_params"), snap => {
-    const val = snap.val();
-    if (val) {
-      mlParams = { ...mlParams, ...val };
-      syncSliders();
-    }
-  });
-}
-
-// ════════════════════════════════════════════════════════════
-// LISTENER: /news_cache  (headlines from Python feed)
-// ════════════════════════════════════════════════════════════
-function listenNews() {
-  rtOnValue(rtRef(db, "news_cache"), snap => {
-    const raw = snap.val();
-    console.log("📰 /news_cache raw:", raw);
-
-    if (!raw) {
-      // Show demo news while feed warms up
-      renderNewsFeed(DEMO_NEWS);
-      updateMoodMeter(DEMO_NEWS);
-      return;
-    }
-
-    // news_cache can be array or object from Firebase
-    allNews = Array.isArray(raw) ? raw : Object.values(raw);
-    console.log(`📰 ${allNews.length} headlines`);
-    renderNewsFeed(allNews);
-    updateMoodMeter(allNews);
-  });
-}
-
-// ════════════════════════════════════════════════════════════
-// RENDER: TOP PICKS
-// ════════════════════════════════════════════════════════════
-function getVisibleStocks() {
-  let list = [...stocks];
-  if (picksFilter === "high") list = list.filter(s => s.comp >= 0.65);
-  if (picksFilter === "bull") list = list.filter(s =>
-    s.comp >= 0.60 && (livePrices[s.ticker]?.change_pct ?? s.ret1w) >= 0
-  );
-  list.sort((a, b) => {
-    if (picksSort === "comp")  return b.comp - a.comp;
-    if (picksSort === "ml")    return b.ml   - a.ml;
-    if (picksSort === "fund")  return b.fund - a.fund;
-    if (picksSort === "ret1w") {
-      const av = livePrices[a.ticker]?.change_pct ?? a.ret1w;
-      const bv = livePrices[b.ticker]?.change_pct ?? b.ret1w;
-      return bv - av;
-    }
-    return 0;
-  });
-  return list;
-}
-
-function renderPicks() {
-  const grid = document.getElementById("picks-grid");
-  const list = getVisibleStocks();
-  grid.innerHTML = "";
-  if (!list.length) {
-    grid.innerHTML = '<p style="color:var(--text3);padding:24px 0">No stocks match filter.</p>';
-    return;
-  }
-  list.forEach((s, i) => {
-    const card = buildPickCard(s, i);
-    card.style.animationDelay = i * 0.04 + "s";
-    grid.appendChild(card);
-  });
-}
-
-function buildPickCard(s, rank) {
-  const lp    = livePrices[s.ticker] || {};
-  const price = lp.price      !== undefined ? lp.price      : s.price;
-  const chg   = lp.change_pct !== undefined ? lp.change_pct : s.ret1w;
-  const pct   = Math.round(s.comp * 100);
-  const bc    = pct >= 70 ? "#00e5a0" : pct >= 60 ? "#f0c040" : "#6b7f96";
-  const sign  = chg >= 0 ? "+" : "";
-
-  const card = document.createElement("div");
-  card.className       = "pick-card" + (rank === 0 ? " rank-1" : "");
-  card.dataset.pticker = s.ticker;
-
-  const sigs = (s.signals || []).map((sg, i) =>
-    `<span class="sig ${["sig-g","sig-b","sig-y"][i] || "sig-y"}">${sg}</span>`
-  ).join("");
-
-  card.innerHTML = `
-    <div class="pc-top">
-      <div class="pc-rank">${rank + 1}</div>
-      <div class="pc-info">
-        <div class="pc-ticker">${s.ticker}</div>
-        <div class="pc-sector">${s.sector}</div>
-      </div>
-      <div class="pc-bar-zone">
-        <div class="pc-bar-row">
-          <div class="pc-bar-bg"><div class="pc-bar-fill" style="width:${pct}%;background:${bc}"></div></div>
-          <span class="pc-score" style="color:${bc}">${pct}%</span>
-        </div>
-        <div class="pc-sigs">${sigs}</div>
-      </div>
-      <div class="pc-price">
-        <span class="pc-pval" data-prev="${price}">₹${price.toLocaleString("en-IN")}</span>
-        <span class="pc-ret ${chg>=0?"pos":"neg"}">${sign}${chg.toFixed(2)}%</span>
-      </div>
-    </div>`;
-  return card;
-}
-
-function patchPickPrices() {
-  Object.entries(livePrices).forEach(([ticker, lp]) => {
-    const pEl = document.querySelector(`[data-pticker="${ticker}"] .pc-pval`);
-    const rEl = document.querySelector(`[data-pticker="${ticker}"] .pc-ret`);
-    if (pEl && lp.price) {
-      const prev = parseFloat(pEl.dataset.prev || lp.price);
-      const dir  = lp.price > prev ? "pos" : lp.price < prev ? "neg" : "";
-      pEl.textContent  = "₹" + lp.price.toLocaleString("en-IN");
-      pEl.dataset.prev = lp.price;
-      if (dir) {
-        pEl.classList.remove("flash-pos","flash-neg");
-        void pEl.offsetWidth;
-        pEl.classList.add("flash-" + dir);
-      }
-    }
-    if (rEl && lp.change_pct !== undefined) {
-      rEl.textContent = (lp.change_pct >= 0 ? "+" : "") + lp.change_pct.toFixed(2) + "%";
-      rEl.className   = "pc-ret " + (lp.change_pct >= 0 ? "pos" : "neg");
-    }
-  });
-}
-
-// ════════════════════════════════════════════════════════════
-// RENDER: LIVE PRICES TABLE
-// ════════════════════════════════════════════════════════════
-function renderLiveTable() {
-  const tbody   = document.getElementById("live-tbody");
-  const entries = Object.entries(livePrices)
-    .filter(([t]) => t.toLowerCase().includes(liveFilter))
-    .sort((a, b) => (b[1].change_pct || 0) - (a[1].change_pct || 0));
-
-  document.getElementById("live-count").textContent = Object.keys(livePrices).length + " stocks";
-
-  if (!entries.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="tbl-empty">No matching stocks</td></tr>';
+    if (loginBtn) loginBtn.style.display = "inline-flex";
+    if (logoutBtn) logoutBtn.style.display = "none";
+    if (profilePill) profilePill.style.display = "none";
+    if (authStatus) authStatus.textContent = "";
+    setUserUI(null, null);
+    startListeners();
     return;
   }
 
-  tbody.innerHTML = entries.map(([ticker, lp]) => {
-    const chg  = lp.change_pct || 0;
-    const cls  = chg >= 0 ? "pos" : "neg";
-    const sign = chg >= 0 ? "+" : "";
-    const vol  = lp.volume ? (lp.volume / 1e6).toFixed(1) + "M" : "—";
-    const high = lp.day_high ? "₹" + lp.day_high.toLocaleString("en-IN") : "—";
-    const low  = lp.day_low  ? "₹" + lp.day_low.toLocaleString("en-IN")  : "—";
-    const open = lp.is_market_open;
-    return `<tr>
-      <td class="td-ticker">${ticker}</td>
-      <td class="td-price">₹${(lp.price||0).toLocaleString("en-IN")}</td>
-      <td class="td-chg ${cls}">${sign}${chg.toFixed(2)}%</td>
-      <td>${high}</td><td>${low}</td><td>${vol}</td>
-      <td class="td-mkt ${open?"open":"closed"}">${open?"● Open":"○ Closed"}</td>
-    </tr>`;
-  }).join("");
-}
-
-// ════════════════════════════════════════════════════════════
-// TICKER TAPE
-// ════════════════════════════════════════════════════════════
-function renderTape() {
-  const tape  = document.getElementById("ticker-tape");
-  const items = [...stocks, ...stocks];
-  tape.innerHTML = items.map(s => {
-    const lp  = livePrices[s.ticker] || {};
-    const p   = lp.price      !== undefined ? lp.price      : s.price;
-    const c   = lp.change_pct !== undefined ? lp.change_pct : s.ret1w;
-    return `<span class="tape-item" data-tticker="${s.ticker}">
-      <span class="tape-name">${s.ticker}</span>
-      <span class="tape-price">₹${p.toLocaleString("en-IN")}</span>
-      <span class="tape-chg ${c>=0?"pos":"neg"}">${c>=0?"+":""}${c.toFixed(2)}%</span>
-    </span>`;
-  }).join("");
-}
-
-function patchTapePrices() {
-  Object.entries(livePrices).forEach(([ticker, lp]) => {
-    const tEl  = document.querySelector(`.tape-item[data-tticker="${ticker}"] .tape-price`);
-    const tcEl = document.querySelector(`.tape-item[data-tticker="${ticker}"] .tape-chg`);
-    if (tEl)  tEl.textContent  = "₹" + lp.price.toLocaleString("en-IN");
-    if (tcEl) {
-      tcEl.textContent = (lp.change_pct>=0?"+":"") + lp.change_pct.toFixed(2) + "%";
-      tcEl.className   = "tape-chg " + (lp.change_pct>=0?"pos":"neg");
-    }
-  });
-}
-
-// ════════════════════════════════════════════════════════════
-// HERO STATS + SIDEBAR
-// ════════════════════════════════════════════════════════════
-function updateHeroStats() {
-  const prices = Object.values(livePrices);
-  if (!prices.length) return;
-  const gainers = prices.filter(p => p.change_pct > 0).length;
-  const losers  = prices.filter(p => p.change_pct < 0).length;
-  const avg     = prices.reduce((s, p) => s + (p.change_pct||0), 0) / prices.length;
-
-  document.getElementById("stat-gainers").textContent = gainers;
-  document.getElementById("stat-losers").textContent  = losers;
-  document.getElementById("stat-total").textContent   = prices.length;
-
-  const avgEl = document.getElementById("stat-avg");
-  avgEl.textContent = (avg>=0?"+":"") + avg.toFixed(2) + "%";
-  avgEl.className   = "hstat-val " + (avg>=0?"pos":"neg");
-}
-
-function updateSidebar() {
-  const prices = Object.values(livePrices);
-  if (!prices.length) return;
-
-  const sorted = [...prices].sort((a,b) => b.change_pct - a.change_pct);
-
-  // Top gainers
-  document.getElementById("top-gainers").innerHTML = sorted.slice(0,5).map(p =>
-    `<div class="mover-row">
-      <span class="mover-name">${p.ticker}</span>
-      <span class="mover-chg pos">+${(p.change_pct||0).toFixed(2)}%</span>
-    </div>`
-  ).join("");
-
-  // Top losers
-  document.getElementById("top-losers").innerHTML = [...sorted].reverse().slice(0,5).map(p =>
-    `<div class="mover-row">
-      <span class="mover-name">${p.ticker}</span>
-      <span class="mover-chg neg">${(p.change_pct||0).toFixed(2)}%</span>
-    </div>`
-  ).join("");
-
-  // Sector heatmap using stocks for sector mapping
-  const sectors = {};
-  stocks.forEach(s => {
-    const lp = livePrices[s.ticker];
-    if (!lp) return;
-    if (!sectors[s.sector]) sectors[s.sector] = {sum:0, count:0};
-    sectors[s.sector].sum   += lp.change_pct || 0;
-    sectors[s.sector].count += 1;
-  });
-
-  document.getElementById("sector-grid").innerHTML = Object.entries(sectors).map(([name, d]) => {
-    const avg = d.sum / d.count;
-    const bg  = avg>=0 ? `rgba(0,229,160,${0.08+Math.min(Math.abs(avg)/3,1)*0.2})`
-                       : `rgba(255,77,109,${0.08+Math.min(Math.abs(avg)/3,1)*0.2})`;
-    const col = avg>=0 ? "var(--accent)" : "var(--danger)";
-    return `<div class="sector-cell" style="background:${bg}">
-      <span class="sector-cell-name">${name}</span>
-      <span class="sector-cell-val" style="color:${col}">${avg>=0?"+":""}${avg.toFixed(2)}%</span>
-    </div>`;
-  }).join("");
-}
-
-// ════════════════════════════════════════════════════════════
-// NEWS FEED
-// ════════════════════════════════════════════════════════════
-function renderNewsFeed(items) {
-  const feed = document.getElementById("news-feed");
-  if (!items || !items.length) {
-    feed.innerHTML = '<p class="news-empty">No headlines yet — run realtime_prices.py to populate.</p>';
-    return;
+  if (authGate) {
+    authGate.classList.add("hidden");
   }
-  feed.innerHTML = items.map((n, i) => {
-    const s   = typeof n.sent === "number" ? n.sent : 0;
-    const cls = s > 0.1 ? "sent-pos" : s < -0.1 ? "sent-neg" : "sent-neu";
-    const lbl = s > 0.1 ? "+" + s.toFixed(2) : s.toFixed(2);
-    return `<div class="news-item" style="animation-delay:${i*0.06}s">
-      <div class="news-headline">${n.title || n.headline || "—"}</div>
-      <div class="news-meta">
-        <span class="news-source">${n.source || "Market News"}</span>
-        ${n.ago ? `<span>${n.ago}</span>` : ""}
-        <span class="sent-pill ${cls}">${lbl}</span>
-      </div>
-    </div>`;
-  }).join("");
-}
-
-function updateMoodMeter(items) {
-  if (!items.length) return;
-  const avg = items.reduce((s, n) => s + (typeof n.sent==="number" ? n.sent : 0), 0) / items.length;
-  const pct = Math.round(((avg + 1) / 2) * 100);
-  document.getElementById("mood-fill").style.width  = pct + "%";
-  const lbl = avg > 0.15 ? "Bullish" : avg < -0.15 ? "Bearish" : "Neutral";
-  const col = avg > 0.15 ? "var(--accent)" : avg < -0.15 ? "var(--danger)" : "var(--text2)";
-  document.getElementById("mood-score").textContent = lbl;
-  document.getElementById("mood-score").style.color = col;
-}
-
-function filterNews() {
-  const q = document.getElementById("news-input").value.trim().toLowerCase();
-  if (!q) { renderNewsFeed(allNews); return; }
-  const filtered = allNews.filter(n =>
-    (n.title||n.headline||"").toLowerCase().includes(q) ||
-    (n.source||"").toLowerCase().includes(q)
-  );
-  renderNewsFeed(filtered.length ? filtered : allNews);
-}
-
-// ════════════════════════════════════════════════════════════
-// ML CONTROLS
-// ════════════════════════════════════════════════════════════
-function setupMLControls() {
-  const sliders = [
-    ["sl-threshold","val-threshold", v => { mlParams.threshold=+v; return v+"%"; }],
-    ["sl-horizon",  "val-horizon",   v => { mlParams.horizon=+v;   return v+" days"; }],
-    ["sl-ml-w",     "val-ml-w",      v => { mlParams.mlW=+v;       return v+"%"; }],
-    ["sl-fund-w",   "val-fund-w",    v => { mlParams.fundW=+v;     return v+"%"; }],
-  ];
-  sliders.forEach(([id, valId, fn]) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener("input", () => {
-      document.getElementById(valId).textContent = fn(el.value);
-      updateWeightViz();
-    });
-  });
-
-  document.getElementById("btn-apply-params").addEventListener("click", () => {
-    const sentW = Math.max(0, 100 - mlParams.mlW - mlParams.fundW);
-    stocks = stocks.map(s => ({
-      ...s,
-      comp: Math.min(0.99, (mlParams.mlW/100)*s.ml + (mlParams.fundW/100)*s.fund + (sentW/100)*((s.sent+1)/2))
-    }));
-    renderPicks();
-    if (db) rtSet(rtRef(db,"ml_params"), mlParams);
-    document.getElementById("ml-status").textContent = "Rescored ✓";
-    setTimeout(() => { document.getElementById("ml-status").textContent = ""; }, 2500);
-    showToast("ML params applied — picks rescored");
-  });
-
-  document.getElementById("btn-reset-params").addEventListener("click", () => {
-    mlParams = { threshold:3, horizon:5, mlW:50, fundW:30 };
-    syncSliders();
-    if (db) rtSet(rtRef(db,"ml_params"), mlParams);
-    showToast("Params reset to defaults");
-  });
-}
-
-function syncSliders() {
-  document.getElementById("sl-threshold").value        = mlParams.threshold;
-  document.getElementById("val-threshold").textContent = mlParams.threshold + "%";
-  document.getElementById("sl-horizon").value          = mlParams.horizon;
-  document.getElementById("val-horizon").textContent   = mlParams.horizon + " days";
-  document.getElementById("sl-ml-w").value             = mlParams.mlW;
-  document.getElementById("val-ml-w").textContent      = mlParams.mlW + "%";
-  document.getElementById("sl-fund-w").value           = mlParams.fundW;
-  document.getElementById("val-fund-w").textContent    = mlParams.fundW + "%";
-  updateWeightViz();
-}
-
-function updateWeightViz() {
-  const sentW = Math.max(0, 100 - mlParams.mlW - mlParams.fundW);
-  const ml   = document.getElementById("wv-ml");
-  const fund = document.getElementById("wv-fund");
-  const sent = document.getElementById("wv-sent");
-  if (!ml) return;
-  ml.style.flex   = mlParams.mlW;
-  fund.style.flex = mlParams.fundW;
-  sent.style.flex = sentW;
-  ml.textContent   = `ML ${mlParams.mlW}%`;
-  fund.textContent = `Fund ${mlParams.fundW}%`;
-  sent.textContent = `Sent ${sentW}%`;
-}
-
-// ════════════════════════════════════════════════════════════
-// PICKS FILTER + SORT
-// ════════════════════════════════════════════════════════════
-function initPicksControls() {
-  document.querySelectorAll(".fpill").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".fpill").forEach(p => p.classList.remove("active"));
-      btn.classList.add("active");
-      picksFilter = btn.dataset.filter;
-      renderPicks();
-    });
-  });
-  document.getElementById("picks-sort").addEventListener("change", e => {
-    picksSort = e.target.value;
-    renderPicks();
-  });
-}
-
-// ════════════════════════════════════════════════════════════
-// RUN SCAN
-// ════════════════════════════════════════════════════════════
-function initRunScan() {
-  document.getElementById("btn-run-scan").addEventListener("click", function() {
-    this.textContent = "Scanning…";
-    this.disabled    = true;
-    setTimeout(() => {
-      stocks = stocks.map(s => ({
-        ...s,
-        comp:  Math.min(0.99, Math.max(0.3, s.comp  + (Math.random()-.5)*.08)),
-        ml:    Math.min(0.99, Math.max(0.3, s.ml    + (Math.random()-.5)*.08)),
-        ret1w: +(s.ret1w + (Math.random()-.5)*.7).toFixed(2),
-      }));
-      renderPicks();
-      renderTape();
-      this.textContent = "⟳ Scan";
-      this.disabled    = false;
-      showToast("Scan complete — picks refreshed ✓");
-    }, 1800);
-  });
-}
-
-// ════════════════════════════════════════════════════════════
-// SCROLL SPY — highlight active nav pill
-// ════════════════════════════════════════════════════════════
-function initScrollSpy() {
-  const sections = document.querySelectorAll(".page-section");
-  const pills    = document.querySelectorAll(".nav-pill");
-  const obs = new IntersectionObserver(entries => {
-    entries.forEach(e => {
-      if (e.isIntersecting) {
-        const id = "#" + e.target.id;
-        pills.forEach(p => p.classList.toggle("active", p.getAttribute("href") === id));
-      }
-    });
-  }, { rootMargin: "-30% 0px -65% 0px" });
-  sections.forEach(s => obs.observe(s));
-}
-
-// ════════════════════════════════════════════════════════════
-// PARTICLE CANVAS
-// ════════════════════════════════════════════════════════════
-function initCanvas() {
-  const canvas = document.getElementById("bg-canvas");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  let W, H;
-  const pts = Array.from({length:35}, () => ({
-    x: Math.random()*window.innerWidth,  y: Math.random()*window.innerHeight,
-    vx:(Math.random()-.5)*.22,           vy:(Math.random()-.5)*.22,
-    r: Math.random()*1.3+.3,             a: Math.random()*.3+.08,
-  }));
-  const resize = () => { W=canvas.width=window.innerWidth; H=canvas.height=window.innerHeight; };
-  resize();
-  window.addEventListener("resize", resize);
-  (function draw() {
-    ctx.clearRect(0,0,W,H);
-    pts.forEach(p => {
-      p.x+=p.vx; p.y+=p.vy;
-      if(p.x<0)p.x=W; if(p.x>W)p.x=0;
-      if(p.y<0)p.y=H; if(p.y>H)p.y=0;
-      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      ctx.fillStyle=`rgba(0,229,160,${p.a})`; ctx.fill();
-    });
-    requestAnimationFrame(draw);
-  })();
-}
-
-// ════════════════════════════════════════════════════════════
-// HELPERS
-// ════════════════════════════════════════════════════════════
-function updateLastSync() {
-  const t = new Date().toLocaleTimeString("en-IN");
-  ["last-sync","footer-sync"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = t;
-  });
-}
-
-function showToast(msg, type="ok") {
-  const stack = document.getElementById("toast-stack");
-  const el    = document.createElement("div");
-  el.className = "toast" + (type==="err"?" err":"");
-  el.innerHTML = `<span style="color:${type==="err"?"#ff4d6d":"#00e5a0"}">${type==="err"?"✕":"✓"}</span> ${msg}`;
-  stack.appendChild(el);
-  setTimeout(() => {
-    el.style.animation = "toast-out .3s forwards";
-    setTimeout(() => el.remove(), 300);
-  }, 3500);
-}
-
-// ════════════════════════════════════════════════════════════
-// INIT
-// ════════════════════════════════════════════════════════════
-document.addEventListener("DOMContentLoaded", () => {
-  initCanvas();
-  initPicksControls();
-  setupMLControls();
-  initRunScan();
-  initScrollSpy();
-
-  // Live table filter
-  document.getElementById("live-search").addEventListener("input", e => {
-    liveFilter = e.target.value.toLowerCase();
-    renderLiveTable();
-  });
-
-  // News filter
-  document.getElementById("news-input").addEventListener("input", filterNews);
-  document.getElementById("btn-news-clear").addEventListener("click", () => {
-    document.getElementById("news-input").value = "";
-    renderNewsFeed(allNews);
-  });
+  appShell?.classList.remove("hidden");
+  if (loginBtn) loginBtn.style.display = "none";
+  if (logoutBtn) logoutBtn.style.display = "inline-flex";
+  if (profilePill) profilePill.style.display = "flex";
+  await upsertUser(user);
+  const profilePrefs = await getUserProfile(user.uid);
+  setUserUI(user, profilePrefs);
+  startListeners();
 });
+
+function activateTab(tabName) {
+  document.querySelectorAll(".nav-pill").forEach((button) => {
+    button.classList.toggle("active", button.dataset.tab === tabName);
+  });
+
+  document.querySelectorAll(".page-section").forEach((panel) => {
+    panel.classList.toggle("active", panel.id === `section-${tabName}`);
+  });
+}
+
+function startListeners() {
+  if (state.listenersStarted) {
+    return;
+  }
+
+  state.listenersStarted = true;
+
+  onValue(ref(db, "stocks"), (snapshot) => {
+    state.stocks = snapshot.val() || {};
+    renderDashboard();
+  });
+
+  onValue(ref(db, "live_prices"), (snapshot) => {
+    state.livePrices = snapshot.val() || {};
+    renderDashboard();
+  });
+
+  onValue(ref(db, "news_cache"), (snapshot) => {
+    state.news = snapshot.val() || [];
+    renderNews();
+  });
+
+  onValue(ref(db, "market_status"), (snapshot) => {
+    state.marketStatus = snapshot.val() || null;
+    renderMarketStatus();
+  });
+
+  onValue(ref(db, "ai_picks"), (snapshot) => {
+    state.aiPicks = snapshot.val() || {};
+    renderAIPicks();
+  });
+
+  onValue(ref(db, "market_indices"), (snapshot) => {
+    const indices = snapshot.val() || {};
+    renderIndexBar(indices);
+  });
+
+  if (state.user) {
+    loadPortfolio();
+  }
+}
+
+async function upsertUser(user) {
+  await update(ref(db, `users/${user.uid}`), {
+    email: user.email || "",
+    photoURL: user.photoURL || "",
+    displayName: user.displayName || "",
+    lastLoginAt: Date.now()
+  });
+}
+
+async function getUserProfile(uid) {
+  try {
+    const snapshot = await get(ref(db, `users/${uid}/profile`));
+    return snapshot.exists() ? snapshot.val() : {};
+  } catch (error) {
+    console.error("Profile fetch error:", error);
+    return {};
+  }
+}
+
+async function loadPortfolio() {
+  if (!state.user || !portTbody) {
+    return;
+  }
+
+  try {
+    const snapshot = await get(ref(db, `users/${state.user.uid}/portfolio`));
+    const portfolio = snapshot.exists() ? snapshot.val() : {};
+    renderPortfolio(portfolio);
+  } catch (error) {
+    console.error("Portfolio load error:", error);
+  }
+}
+
+function renderPortfolio(portfolio) {
+  if (!portTbody) return;
+
+  const rows = Object.values(portfolio || {}).map((item) => {
+    const currentValue = Number(item.qty || 0) * Number(item.buyPrice || 0);
+    return `
+      <tr>
+        <td>${item.ticker}</td>
+        <td>${item.qty}</td>
+        <td>${formatCurrency(item.buyPrice)}</td>
+        <td>${formatCurrency(currentValue)}</td>
+        <td>${formatCurrency(Number(item.qty || 0) * Number(item.buyPrice || 0))}</td>
+        <td>${formatCurrency(currentValue)}</td>
+        <td>—</td>
+        <td>—</td>
+        <td></td>
+      </tr>
+    `;
+  });
+
+  portTbody.innerHTML = rows.join("");
+}
+
+function setUserUI(user, profilePrefs) {
+  if (!user) {
+    if (profileName) profileName.textContent = "Guest";
+    if (profileEmail) profileEmail.textContent = "Not logged in";
+    if (headerProfileName) headerProfileName.textContent = "Guest";
+    if (headerProfileEmail) headerProfileEmail.textContent = "Not logged in";
+    profilePic?.removeAttribute("src");
+    headerProfilePic?.removeAttribute("src");
+    if (displayNameInput) displayNameInput.value = "";
+    if (themeAccentInput) themeAccentInput.value = "emerald";
+    applyAccent("emerald");
+    return;
+  }
+
+  const preferredName = profilePrefs?.customName || user.displayName || "User";
+  const accent = profilePrefs?.themeAccent || "emerald";
+  const photo = user.photoURL || "";
+
+  if (profileName) profileName.textContent = preferredName;
+  if (profileEmail) profileEmail.textContent = user.email || "";
+  if (headerProfileName) headerProfileName.textContent = preferredName;
+  if (headerProfileEmail) headerProfileEmail.textContent = user.email || "";
+  if (displayNameInput) displayNameInput.value = profilePrefs?.customName || "";
+  if (themeAccentInput) themeAccentInput.value = accent;
+  if (profilePic) profilePic.src = photo;
+  if (headerProfilePic) headerProfilePic.src = photo;
+  applyAccent(accent);
+}
+
+function applyAccent(accent) {
+  document.body.dataset.accent = accent;
+}
+
+function renderDashboard() {
+  const merged = Object.keys(state.stocks).map((ticker) => ({
+    ticker,
+    ...state.stocks[ticker],
+    ...(state.livePrices[ticker.replace(".", "_")] || {})
+  }));
+
+  if (trackedCount) trackedCount.textContent = String(merged.length);
+  
+  const gainersCount = merged.filter(s => (s.change_pct || 0) > 0).length;
+  const losersCount = merged.filter(s => (s.change_pct || 0) < 0).length;
+  const totalChange = merged.reduce((acc, s) => acc + (s.change_pct || 0), 0);
+  const avgMove = merged.length > 0 ? totalChange / merged.length : 0;
+
+  if (statGainers) statGainers.textContent = String(gainersCount);
+  if (statLosers) statLosers.textContent = String(losersCount);
+  if (statAvg) statAvg.textContent = `${avgMove.toFixed(2)}%`;
+
+  // Render Sidebar Widgets
+  renderSidebar(merged);
+
+  // Render Live
+  let liveMerged = [...merged];
+  const query = liveSearch?.value.toLowerCase().trim() || "";
+  if (query) {
+    liveMerged = liveMerged.filter(s => s.ticker.toLowerCase().includes(query));
+  }
+  if (liveCount) liveCount.textContent = `${liveMerged.length} stocks`;
+  renderLive(liveMerged);
+}
+
+function renderSidebar(stocks) {
+  const sortedByChange = [...stocks].sort((a, b) => (Number(b.change_pct) || 0) - (Number(a.change_pct) || 0));
+  
+  if (topGainers) {
+    const gainers = sortedByChange.slice(0, 3).filter(s => (Number(s.change_pct) || 0) > 0);
+    topGainers.innerHTML = gainers.map(s => `<div class="mover-row"><span>${s.ticker}</span><span class="positive">+${Number(s.change_pct).toFixed(2)}%</span></div>`).join("") || emptyState("No gainers");
+  }
+  
+  if (topLosers) {
+    const losers = sortedByChange.slice(-3).reverse().filter(s => (Number(s.change_pct) || 0) < 0);
+    topLosers.innerHTML = losers.map(s => `<div class="mover-row"><span>${s.ticker}</span><span class="negative">${Number(s.change_pct).toFixed(2)}%</span></div>`).join("") || emptyState("No losers");
+  }
+  
+  if (sectorGrid) {
+    const sectors = {};
+    stocks.forEach(s => {
+      const sec = s.sector || "Other";
+      if (!sectors[sec]) sectors[sec] = { count: 0, change: 0 };
+      sectors[sec].count++;
+      sectors[sec].change += (Number(s.change_pct) || 0);
+    });
+    const html = Object.entries(sectors).map(([sec, data]) => {
+      const avg = data.change / data.count;
+      const cls = avg >= 0 ? "positive" : "negative";
+      return `<div class="sector-cell"><span>${sec}</span><span class="${cls}">${avg >= 0 ? "+" : ""}${avg.toFixed(2)}%</span></div>`;
+    }).join("");
+    sectorGrid.innerHTML = html || emptyState("No sectors");
+  }
+}
+
+function renderLive(stocks) {
+  if (!liveTablesContainer) return;
+
+  if (!stocks.length) {
+    liveTablesContainer.innerHTML = emptyState("No stocks match the criteria.");
+    return;
+  }
+
+  // Group stocks by sector
+  const bySector = {};
+  stocks.forEach(stock => {
+    const sec = stock.sector || "Uncategorized";
+    if (!bySector[sec]) bySector[sec] = [];
+    bySector[sec].push(stock);
+  });
+
+  // Sort sectors alphabetically
+  const sortedSectors = Object.keys(bySector).sort();
+
+  liveTablesContainer.innerHTML = sortedSectors.map(sector => {
+    const sectorStocks = bySector[sector];
+    
+    // Sort stocks within sector by change_pct
+    sectorStocks.sort((a, b) => (b.change_pct || 0) - (a.change_pct || 0));
+
+    const rows = sectorStocks.map(stock => {
+      const change = Number(stock.change_pct || 0);
+      const cls = change >= 0 ? "positive" : "negative";
+      const icon = change >= 0 ? "▲" : "▼";
+      return `
+        <tr>
+          <td class="td-ticker">${stock.ticker}</td>
+          <td><strong class="price-value ${cls}">${formatCurrency(stock.price)}</strong></td>
+          <td class="${cls}">${icon} ${change.toFixed(2)}%</td>
+          <td class="muted">${formatVolume(stock.volume)}</td>
+        </tr>
+      `;
+    }).join("");
+
+    return `
+      <div style="margin-bottom: 24px;">
+        <div style="padding: 12px 18px; background: var(--panel-strong); border: 1px solid var(--line); border-radius: 12px 12px 0 0; display: flex; justify-content: space-between;">
+          <h3 style="margin: 0;">${sector}</h3>
+          <span class="muted" style="font-size: 0.9em; align-self: center;">${sectorStocks.length} symbols</span>
+        </div>
+        <div class="table-shell" style="border-top: none; border-radius: 0 0 12px 12px; margin-bottom: 0;">
+          <table class="data-table">
+            <thead>
+              <tr><th>Ticker</th><th>Price</th><th>Change</th><th>Volume</th></tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderNews() {
+  if (!newsGrid) return;
+  
+  const query = newsInput?.value.toLowerCase().trim() || "";
+  let filtered = state.news || [];
+  if (query) {
+    filtered = filtered.filter(item => (item.title || "").toLowerCase().includes(query) || (item.source || "").toLowerCase().includes(query));
+  }
+
+  if (!filtered.length) {
+    newsGrid.innerHTML = emptyState("No news found.");
+    return;
+  }
+
+  newsGrid.innerHTML = filtered
+    .map((item) => {
+      return `
+        <a href="${item.link || '#'}" target="_blank" style="text-decoration: none; color: inherit;">
+          <article class="news-card">
+            <h4>${item.title || "Untitled story"}</h4>
+            <div class="news-meta">
+              <span>${item.source || "Yahoo Finance"}</span>
+              <span>•</span>
+              <span>${formatTimestamp(item.updated_at)}</span>
+            </div>
+          </article>
+        </a>
+      `;
+    })
+    .join("");
+}
+
+function renderAIPicks() {
+  if (!aiGrid) return;
+  const picks = Object.values(state.aiPicks);
+  
+  if (!picks.length) {
+    aiGrid.innerHTML = emptyState("AI Model is currently analyzing the market. Check back soon.");
+    return;
+  }
+
+  aiGrid.innerHTML = picks
+    .map((stock) => {
+      const signal = Array.isArray(stock.signals) ? stock.signals.join(", ") : "Bullish";
+      return `
+        <article class="price-card" style="border-left: 4px solid var(--accent);">
+          <h4>${stock.ticker}</h4>
+          <p class="price-value positive">${formatCurrency(stock.price)}</p>
+          <div class="price-row"><span>Sector</span><span>${stock.sector || "N/A"}</span></div>
+          <div class="price-row"><span>Signal</span><span style="color: var(--accent); font-weight: bold;">${signal}</span></div>
+          <div class="price-row"><span>AI Score</span><span>${formatScore(stock.ml)}</span></div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderIndexBar(indices) {
+  if (!indexBar) return;
+  const items = Object.values(indices);
+  if (!items.length) {
+    indexBar.innerHTML = `<span class="muted" style="font-size: 0.8rem;">Loading indices...</span>`;
+    return;
+  }
+
+  indexBar.innerHTML = items.map(idx => {
+    const cls = idx.change >= 0 ? "pos" : "neg";
+    const arrow = idx.change >= 0 ? "▲" : "▼";
+    return `
+      <div class="index-item">
+        <span class="index-name">${idx.name}</span>
+        <span class="index-price">${idx.price.toLocaleString("en-IN")}</span>
+        <span class="index-change ${cls}">${arrow} ${Math.abs(idx.change_pct).toFixed(2)}%</span>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderMarketStatus() {
+  if (!state.marketStatus) {
+    if (marketPhase) marketPhase.textContent = "Waiting...";
+    if (marketSummary) marketSummary.textContent = "No market status available.";
+    if (lastRefresh) lastRefresh.textContent = "Waiting...";
+    return;
+  }
+
+  if (marketPhase) marketPhase.textContent = state.marketStatus.label || "Unknown";
+  if (marketSummary) marketSummary.textContent =
+    state.marketStatus.summary ||
+    `Market open: ${Boolean(state.marketStatus.is_market_open)}`;
+  if (lastRefresh) lastRefresh.textContent = formatTimestamp(state.marketStatus.updated_at);
+}
+
+function emptyState(message) {
+  return `<div class="empty-state">${message}</div>`;
+}
+
+function formatCurrency(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "N/A";
+  }
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2
+  }).format(number);
+}
+
+function formatScore(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(2) : "0.00";
+}
+
+function formatVolume(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "N/A";
+  }
+  return new Intl.NumberFormat("en-IN", {
+    notation: "compact",
+    maximumFractionDigits: 1
+  }).format(number);
+}
+
+function formatTimestamp(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "N/A";
+  }
+  return new Date(number).toLocaleString("en-IN");
+}
+
+// Optional example write helper if you later want to save watchlists/preferences.
+async function saveUserPreference(path, value) {
+  if (!state.user) {
+    return;
+  }
+  await set(ref(db, `users/${state.user.uid}/${path}`), value);
+}
+
+window.saveUserPreference = saveUserPreference;

@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+serviceAccountKey.json
+.env
+.gemini/
+node_modules/
+dist/
+build/
+*.exe

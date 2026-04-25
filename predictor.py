@@ -1,180 +1,351 @@
-"""
-StockSense · realtime_prices.py  (FULLY FIXED)
-=================================================
-CRITICAL FIX: init_firebase() had broken indentation.
-`cred` was inside the if-block but initialize_app() was OUTSIDE it
-→ NameError on every run. Now both lines are correctly indented.
-
-Install:
-    pip install yfinance firebase-admin newsapi-python --break-system-packages
-
-Run:
-    python realtime_prices.py
-"""
-
-import os
 import json
-import yfinance as yf
-import firebase_admin
-from firebase_admin import credentials, db as rtdb
+import os
 import time
-from datetime import datetime
+import warnings
+from datetime import datetime, timezone
 
-SERVICE_ACCOUNT_PATH = "serviceAccountKey.json"
-DATABASE_URL         = "https://stockscene-560d7-default-rtdb.asia-southeast1.firebasedatabase.app/"
-POLL_INTERVAL        = 10
+import firebase_admin
+from firebase_admin import credentials, db
+from sklearn.ensemble import RandomForestClassifier
 
-WATCHLIST = [
-    "RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS",
-    "HINDUNILVR.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS","ITC.NS",
-    "LT.NS","AXISBANK.NS","WIPRO.NS","ASIANPAINT.NS","MARUTI.NS",
-    "BAJFINANCE.NS","HCLTECH.NS","TITAN.NS","SUNPHARMA.NS","ULTRACEMCO.NS",
-    "TATAMOTORS.NS","ADANIPORTS.NS","POWERGRID.NS","NTPC.NS","ONGC.NS",
-    "JSWSTEEL.NS","TATASTEEL.NS","BAJAJFINSV.NS","TECHM.NS","DRREDDY.NS",
-]
+try:
+    import pandas as pd
+    import yfinance as yf
+except ImportError:  # pragma: no cover
+    yf = None
 
-# ✅ FIXED: initialize_app() is now INSIDE the if-block with cred
+warnings.filterwarnings('ignore')
+
+DATABASE_URL = os.getenv(
+    "FIREBASE_DATABASE_URL",
+    "https://stockscene-560d7-default-rtdb.asia-southeast1.firebasedatabase.app",
+)
+SERVICE_ACCOUNT_PATH = os.getenv("FIREBASE_SERVICE_ACCOUNT", "serviceAccountKey.json")
+POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "20"))
+
+SECTORS = {
+    # Financials
+    "HDFCBANK.NS": "Financials", "ICICIBANK.NS": "Financials", "SBIN.NS": "Financials", "AXISBANK.NS": "Financials", 
+    "KOTAKBANK.NS": "Financials", "INDUSINDBK.NS": "Financials", "BAJFINANCE.NS": "Financials", "BAJAJFINSV.NS": "Financials", 
+    "SBILIFE.NS": "Financials", "HDFCLIFE.NS": "Financials", "CHOLAFIN.NS": "Financials", "MUTHOOTFIN.NS": "Financials",
+    "PNB.NS": "Financials", "BANKBARODA.NS": "Financials", "CANBK.NS": "Financials", "IDFCFIRSTB.NS": "Financials",
+    # Technology
+    "TCS.NS": "Technology", "INFY.NS": "Technology", "HCLTECH.NS": "Technology", "WIPRO.NS": "Technology", 
+    "TECHM.NS": "Technology", "LTIM.NS": "Technology", "COFORGE.NS": "Technology", "PERSISTENT.NS": "Technology",
+    "MPHASIS.NS": "Technology", "KPITTECH.NS": "Technology", "TATAELXSI.NS": "Technology", "CYIENT.NS": "Technology",
+    # Automobiles
+    "TATAMOTORS.NS": "Automobiles", "M&M.NS": "Automobiles", "MARUTI.NS": "Automobiles", "EICHERMOT.NS": "Automobiles", 
+    "HEROMOTOCO.NS": "Automobiles", "BAJAJ-AUTO.NS": "Automobiles", "TVSMOTOR.NS": "Automobiles", "ASHOKLEY.NS": "Automobiles",
+    "BOSCHLTD.NS": "Automobiles", "MRF.NS": "Automobiles", "BALKRISIND.NS": "Automobiles", "MOTHERSON.NS": "Automobiles",
+    # Consumer Goods
+    "ITC.NS": "Consumer Goods", "HINDUNILVR.NS": "Consumer Goods", "ASIANPAINT.NS": "Consumer Goods", "TITAN.NS": "Consumer Goods", 
+    "NESTLEIND.NS": "Consumer Goods", "TATACONSUM.NS": "Consumer Goods", "BRITANNIA.NS": "Consumer Goods", "DABUR.NS": "Consumer Goods",
+    "GODREJCP.NS": "Consumer Goods", "MARICO.NS": "Consumer Goods", "COLPAL.NS": "Consumer Goods", "UBL.NS": "Consumer Goods",
+    "MCDOWELL-N.NS": "Consumer Goods", "RADICO.NS": "Consumer Goods", "PIDILITIND.NS": "Consumer Goods", "PAGEIND.NS": "Consumer Goods",
+    # Pharma
+    "SUNPHARMA.NS": "Pharma", "DIVISLAB.NS": "Pharma", "CIPLA.NS": "Pharma", "DRREDDY.NS": "Pharma", "APOLLOHOSP.NS": "Pharma",
+    "LUPIN.NS": "Pharma", "AUROPHARMA.NS": "Pharma", "TORNTPHARM.NS": "Pharma", "ZYDUSLIFE.NS": "Pharma", "BIOCON.NS": "Pharma",
+    "ALKEM.NS": "Pharma", "SYNGENE.NS": "Pharma", "GLENMARK.NS": "Pharma", "IPCALAB.NS": "Pharma", "LAURUSLABS.NS": "Pharma",
+    # Energy
+    "RELIANCE.NS": "Energy", "NTPC.NS": "Energy", "POWERGRID.NS": "Energy", "ONGC.NS": "Energy", "COALINDIA.NS": "Energy",
+    "TATAPOWER.NS": "Energy", "ADANIGREEN.NS": "Energy", "ADANIPOWER.NS": "Energy", "BPCL.NS": "Energy", "IOC.NS": "Energy",
+    # Metal
+    "TATASTEEL.NS": "Metal", "JSWSTEEL.NS": "Metal", "HINDALCO.NS": "Metal", "VEDL.NS": "Metal", "JINDALSTEL.NS": "Metal",
+    "SAIL.NS": "Metal", "NMDC.NS": "Metal", "NATIONALUM.NS": "Metal", "HINDZINC.NS": "Metal",
+    # Infrastructure & Industrials
+    "LT.NS": "Industrials", "ADANIPORTS.NS": "Industrials", "ADANIENT.NS": "Industrials", "GRASIM.NS": "Industrials", 
+    "ULTRACEMCO.NS": "Industrials", "AMBUJACEM.NS": "Industrials", "SHREECEM.NS": "Industrials", "ACC.NS": "Industrials",
+    "BHEL.NS": "Industrials", "HAL.NS": "Industrials", "BEL.NS": "Industrials", "IRCTC.NS": "Industrials",
+    "RVNL.NS": "Industrials", "IRCON.NS": "Industrials", "PFC.NS": "Industrials", "RECLTD.NS": "Industrials",
+    # Telecom
+    "BHARTIARTL.NS": "Telecom", "IDEA.NS": "Telecom", "INDUSTOWER.NS": "Telecom", "TATACOMM.NS": "Telecom"
+}
+
+WATCHLIST = list(SECTORS.keys())
+
+INDEX_WATCHLIST = {
+    "^NSEI": "NIFTY 50",
+    "^NSEBANK": "BANK NIFTY",
+    "^BSESN": "SENSEX",
+    "^CNXIT": "NIFTY IT"
+}
+
+def now_ms():
+    return int(time.time() * 1000)
+
+def firebase_credential():
+    raw_env = os.getenv("FIREBASE_KEY")
+    if raw_env:
+        return credentials.Certificate(json.loads(raw_env))
+    return credentials.Certificate(SERVICE_ACCOUNT_PATH)
+
 def init_firebase():
-    if not firebase_admin._apps:
-        def get_firebase_cred():
-            try:
-                # ✅ For Render (production)
-                firebase_key = json.loads(os.environ["FIREBASE_KEY"])
-                return credentials.Certificate(firebase_key)
-            except KeyError:
-                # ✅ For local development
-                print("⚠️ Using local serviceAccountKey.json")
-                return credentials.Certificate(SERVICE_ACCOUNT_PATH)
+    if firebase_admin._apps:
+        return
+    cred = firebase_credential()
+    firebase_admin.initialize_app(cred, {"databaseURL": DATABASE_URL})
+    print("Firebase connected")
 
-        cred = get_firebase_cred()
-        firebase_admin.initialize_app(cred, {
-            "databaseURL": "https://stockscene-560d7-default-rtdb.asia-southeast1.firebasedatabase.app/"
-        })
-        print("✅ Firebase connected")
-
-def fetch_single(ticker):
-    try:
-        fi     = yf.Ticker(ticker).fast_info
-        price  = getattr(fi,"last_price",None)
-        prev   = getattr(fi,"previous_close",None)
-        high   = getattr(fi,"day_high",None)
-        low    = getattr(fi,"day_low",None)
-        volume = getattr(fi,"last_volume",0)
-        if not price: return None
-        chg = ((price-prev)/prev*100) if prev else 0
-        now = datetime.now()
-        is_open = (
-            now.replace(hour=9,minute=15,second=0,microsecond=0) <= now <=
-            now.replace(hour=15,minute=30,second=0,microsecond=0)
-            and now.weekday() < 5
-        )
-        clean = ticker.replace(".NS","").replace(".BO","")
-        return {
-            "ticker":clean,"price":round(float(price),2),
-            "change_pct":round(float(chg),2),
-            "change_abs":round(float(price-(prev or price)),2),
-            "prev_close":round(float(prev or price),2),
-            "day_high":round(float(high or price),2),
-            "day_low":round(float(low or price),2),
-            "volume":int(volume or 0),
-            "is_market_open":is_open,
-            "updated_at":now.isoformat(),
-            "updated_ts":int(now.timestamp()),
+def seed_stocks():
+    print("Seeding massive stock catalog to Firebase...")
+    payload = {}
+    for symbol, sector in SECTORS.items():
+        payload[symbol.replace(".", "_")] = {
+            "ticker": symbol,
+            "sector": sector,
+            "comp": 0,
+            "ml": 0
         }
+    db.reference("stocks").set(payload)
+    print(f"Seeded {len(payload)} stocks.")
+
+def market_label():
+    now = datetime.now(timezone.utc)
+    hour = now.hour
+    if 3 <= hour <= 10:
+        return True, "Open", f"Live {len(WATCHLIST)}-stock market snapshot."
+    return False, "Closed", "Market is closed; caching latest close prices."
+
+def fetch_bulk():
+    if yf is None:
+        return []
+    try:
+        data = yf.download(WATCHLIST, period="5d", interval="1d", group_by="ticker", threads=True, progress=False)
+        rows = []
+        for symbol in WATCHLIST:
+            try:
+                if len(WATCHLIST) > 1:
+                    if isinstance(data.columns, pd.MultiIndex):
+                        if symbol not in data.columns.get_level_values(0):
+                            continue
+                        hist = data[symbol]
+                    else:
+                        continue
+                else:
+                    hist = data
+                
+                hist = hist.dropna()
+                if hist.empty:
+                    continue
+                last_row = hist.iloc[-1]
+                prev_row = hist.iloc[-2] if len(hist) > 1 else last_row
+                
+                close_price = float(last_row["Close"])
+                prev_close = float(prev_row["Close"])
+                change_pct = ((close_price - prev_close) / prev_close) * 100 if prev_close else 0
+                
+                rows.append({
+                    "ticker": symbol,
+                    "price": round(close_price, 2),
+                    "change_pct": round(change_pct, 2),
+                    "volume": int(last_row.get("Volume", 0)),
+                    "updated_at": now_ms(),
+                })
+            except Exception as e:
+                pass
+        return rows
+    except Exception as error:
+        print(f"Bulk fetch failed: {error}")
+        return []
+
+def fetch_indices():
+    if yf is None:
+        return
+    try:
+        symbols = list(INDEX_WATCHLIST.keys())
+        data = yf.download(symbols, period="2d", interval="1d", group_by="ticker", threads=True, progress=False)
+        
+        payload = {}
+        for sym, name in INDEX_WATCHLIST.items():
+            try:
+                if len(symbols) > 1:
+                    hist = data[sym]
+                else:
+                    hist = data
+                hist = hist.dropna()
+                if hist.empty: continue
+                
+                last_row = hist.iloc[-1]
+                prev_row = hist.iloc[-2] if len(hist) > 1 else last_row
+                
+                price = float(last_row["Close"])
+                prev_close = float(prev_row["Close"])
+                change = price - prev_close
+                change_pct = (change / prev_close) * 100 if prev_close else 0
+                
+                payload[sym.replace("^", "").replace(".", "_")] = {
+                    "name": name,
+                    "price": round(price, 2),
+                    "change": round(change, 2),
+                    "change_pct": round(change_pct, 2)
+                }
+            except:
+                pass
+        
+        if payload:
+            db.reference("market_indices").set(payload)
+            print(f"Pushed {len(payload)} market indices")
     except Exception as e:
-        print(f"  [!] {ticker}: {e}"); return None
+        print(f"Failed to fetch indices: {e}")
 
-def push_prices(prices):
-    if not prices: return
-    rtdb.reference("live_prices").update({p["ticker"]:p for p in prices})
-    print(f"  ✓ {len(prices)} prices → /live_prices")
+def push_prices(rows):
+    payload = {row["ticker"].replace(".", "_"): row for row in rows if row}
+    db.reference("live_prices").update(payload)
+    print(f"Pushed {len(payload)} live prices")
 
-def push_market_status(prices):
-    if not prices: return
-    avg = sum(p["change_pct"] for p in prices)/len(prices)
-    rtdb.reference("market_status").set({
-        "avg_change_pct":round(avg,2),
-        "gainers":sum(1 for p in prices if p["change_pct"]>0),
-        "losers": sum(1 for p in prices if p["change_pct"]<0),
-        "total":  len(prices),
-        "is_market_open":any(p.get("is_market_open") for p in prices),
-        "updated_at":datetime.now().isoformat(),
-    })
-    print("  ✓ market_status updated")
+def push_market_status(rows):
+    is_open, label, summary = market_label()
+    positive = sum(1 for row in rows if row and row["change_pct"] >= 0)
+    payload = {
+        "is_market_open": is_open,
+        "label": label,
+        "summary": f"{summary} Positive symbols: {positive}/{len(rows)}.",
+        "updated_at": now_ms(),
+    }
+    db.reference("market_status").set(payload)
 
 def push_news():
-    FALLBACK = [
-        {"title":"Sensex gains 200 pts; IT stocks lead rally","source":"Economic Times","sent":0.32},
-        {"title":"Nifty Bank outperforms; HDFC, ICICI in focus","source":"Mint","sent":0.18},
-        {"title":"FII inflows continue for fifth consecutive session","source":"Business Standard","sent":0.25},
-        {"title":"RBI holds repo rate; signals neutral stance","source":"BloombergQuint","sent":0.08},
-        {"title":"Auto sector under pressure on global headwinds","source":"CNBC-TV18","sent":-0.14},
-    ]
+    if yf is None:
+        return
     try:
-        from newsapi import NewsApiClient
-        newsapi = NewsApiClient(api_key="ab577083fd88449da5b507f583248749")
-        res  = newsapi.get_top_headlines(q="India stock market NSE",language="en",page_size=8)
-        data = [
-            {"title":a["title"],"source":a.get("source",{}).get("name","News"),"sent":0.0}
-            for a in res.get("articles",[])
-            if a.get("title") and "[Removed]" not in a.get("title","")
-        ]
-        if not data: data = FALLBACK
+        sources = ["^NSEI", "RELIANCE.NS", "HDFCBANK.NS", "TCS.NS", "TATAMOTORS.NS"]
+        aggregated = []
+        seen_titles = set()
+
+        for src in sources:
+            ticker = yf.Ticker(src)
+            news_data = ticker.news
+            if not news_data:
+                continue
+            
+            for item in news_data:
+                content = item.get("content", {})
+                title = content.get("title") or item.get("title") or "Market Update"
+                
+                if title in seen_titles:
+                    continue
+                seen_titles.add(title)
+
+                link_obj = content.get("clickThroughUrl", {})
+                link = link_obj.get("url") or item.get("link") or "#"
+                
+                provider = content.get("provider", {})
+                source = provider.get("displayName") or item.get("publisher") or "Financial News"
+                
+                pub_time = content.get("pubDate") or item.get("providerPublishTime")
+                
+                if isinstance(pub_time, str):
+                    try:
+                        dt = datetime.fromisoformat(pub_time.replace("Z", "+00:00"))
+                        updated_at = int(dt.timestamp() * 1000)
+                    except:
+                        updated_at = now_ms()
+                elif isinstance(pub_time, (int, float)):
+                    updated_at = int(pub_time) * 1000
+                else:
+                    updated_at = now_ms()
+
+                aggregated.append({
+                    "title": title,
+                    "source": source,
+                    "link": link,
+                    "sent": 0.0,
+                    "updated_at": updated_at
+                })
+        
+        aggregated.sort(key=lambda x: x["updated_at"], reverse=True)
+        if aggregated:
+            db.reference("news_cache").set(aggregated[:20])
     except Exception as e:
-        print(f"  ⚠️ NewsAPI: {e} — fallback"); data = FALLBACK
-    rtdb.reference("news_cache").set(data)
-    print(f"  ✓ {len(data)} headlines → /news_cache")
+        print(f"Failed to fetch news: {e}")
 
-def seed_stocks_if_empty():
-    if rtdb.reference("stocks").get(): return
-    DEMO = [
-        {"ticker":"RELIANCE","sector":"Energy","price":2847,"ret1w":2.1,"ml":0.78,"fund":0.72,"sent":0.18,"comp":0.735,"signals":["EMA cross","Vol spike","MACD bull"]},
-        {"ticker":"TCS","sector":"IT","price":3921,"ret1w":1.4,"ml":0.74,"fund":0.81,"sent":0.22,"comp":0.713,"signals":["RSI bounce","OBV rise","EMA trend"]},
-        {"ticker":"HDFCBANK","sector":"Banking","price":1712,"ret1w":3.2,"ml":0.71,"fund":0.76,"sent":0.14,"comp":0.693,"signals":["BB squeeze","Vol break","MACD cross"]},
-        {"ticker":"BAJFINANCE","sector":"Finance","price":6840,"ret1w":1.8,"ml":0.69,"fund":0.74,"sent":0.11,"comp":0.673,"signals":["RSI climb","Fund growth","OBV bull"]},
-        {"ticker":"BHARTIARTL","sector":"Telecom","price":1285,"ret1w":2.9,"ml":0.67,"fund":0.68,"sent":0.26,"comp":0.658,"signals":["Gap up","Stoch cross","Vol surge"]},
-        {"ticker":"INFY","sector":"IT","price":1564,"ret1w":0.8,"ml":0.63,"fund":0.79,"sent":0.09,"comp":0.633,"signals":["High ROE","Rev growth","EMA bull"]},
-        {"ticker":"MARUTI","sector":"Auto","price":10420,"ret1w":1.2,"ml":0.61,"fund":0.65,"sent":0.07,"comp":0.613,"signals":["RSI 52","MACD flat","Low PE"]},
-        {"ticker":"SUNPHARMA","sector":"Pharma","price":1632,"ret1w":2.4,"ml":0.59,"fund":0.62,"sent":0.17,"comp":0.593,"signals":["BB upper","Vol avg","Sent pos"]},
-        {"ticker":"TITAN","sector":"Consumer","price":3340,"ret1w":-0.6,"ml":0.54,"fund":0.70,"sent":0.04,"comp":0.553,"signals":["RSI 48","Low mom","Watchlist"]},
-        {"ticker":"TATAMOTORS","sector":"Auto","price":768,"ret1w":3.8,"ml":0.51,"fund":0.48,"sent":0.21,"comp":0.523,"signals":["High beta","Sent bull","RSI 58"]},
-    ]
-    for s in DEMO:
-        rtdb.reference(f"stocks/{s['ticker']}").set(s)
-    print(f"  ✓ Seeded {len(DEMO)} stocks")
+def train_and_push_model():
+    print("Training ML model for AI Suggestions...")
+    if yf is None:
+        return
 
-def run():
-    print("\n"+"═"*50)
-    print("  STOCKSENSE · REALTIME PRICE FEED")
-    print(f"  {len(WATCHLIST)} NSE stocks · every {POLL_INTERVAL}s")
-    print("  Ctrl+C to stop")
-    print("═"*50+"\n")
+    predictions = {}
+    for symbol in WATCHLIST:
+        try:
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="1y")
+            if hist.empty or len(hist) < 50:
+                continue
+
+            hist['SMA_20'] = hist['Close'].rolling(window=20).mean()
+            hist['SMA_50'] = hist['Close'].rolling(window=50).mean()
+            hist['Return'] = hist['Close'].pct_change()
+            hist['Volatility'] = hist['Return'].rolling(window=20).std()
+            
+            hist['Target'] = (hist['Close'].shift(-5) > hist['Close']).astype(int)
+            
+            data = hist.dropna()
+            if len(data) < 50:
+                continue
+
+            features = ['SMA_20', 'SMA_50', 'Return', 'Volatility']
+            X = data[features]
+            y = data['Target']
+
+            model = RandomForestClassifier(n_estimators=50, random_state=42)
+            model.fit(X, y)
+
+            latest = hist.iloc[-1]
+            latest_features = [[
+                latest['SMA_20'] if not pd.isna(latest['SMA_20']) else latest['Close'],
+                latest['SMA_50'] if not pd.isna(latest['SMA_50']) else latest['Close'],
+                latest['Return'] if not pd.isna(latest['Return']) else 0,
+                latest['Volatility'] if not pd.isna(latest['Volatility']) else 0.01
+            ]]
+            
+            prob = model.predict_proba(latest_features)[0][1]
+            ml_score = round(prob, 2)
+            
+            if ml_score < 0.55:
+                continue
+
+            signals = []
+            if ml_score >= 0.7: signals.append("Strong Buy")
+            elif ml_score >= 0.55: signals.append("Bullish Trend")
+            
+            if latest['Close'] > latest['SMA_20']: signals.append("Above 20-SMA")
+            
+            predictions[symbol.replace(".", "_")] = {
+                "ticker": symbol,
+                "sector": SECTORS.get(symbol, "Unknown"),
+                "ml": ml_score,
+                "signals": signals[:2],
+                "price": round(float(latest['Close']), 2),
+                "updated_at": now_ms()
+            }
+        except Exception as e:
+            pass
+
+    if predictions:
+        sorted_preds = dict(sorted(predictions.items(), key=lambda item: item[1]['ml'], reverse=True)[:30])
+        db.reference("ai_picks").set(sorted_preds)
+        print(f"Pushed {len(sorted_preds)} AI Suggestions")
+
+def run_cycle():
+    fetch_indices()
+    push_news()
+    rows = fetch_bulk()
+    push_prices(rows)
+    push_market_status(rows)
+
+def main():
     init_firebase()
-    seed_stocks_if_empty()
-    push_news()     # immediate on startup so news window isn't empty
-    cycle, news_freq = 1, 6
-    while True:
-        t0 = time.time()
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Cycle #{cycle}")
-        prices = []
-        for ticker in WATCHLIST:
-            d = fetch_single(ticker)
-            if d: prices.append(d)
-            time.sleep(0.2)
-        push_prices(prices)
-        push_market_status(prices)
-        if cycle % news_freq == 0:
-            push_news()
-        elapsed = time.time()-t0
-        sleep_t = max(0, POLL_INTERVAL-elapsed)
-        print(f"  ↻ {elapsed:.1f}s elapsed | sleeping {sleep_t:.1f}s\n")
-        cycle += 1
-        time.sleep(sleep_t)
-
-if __name__ == "__main__":
+    seed_stocks()
+    cycle_count = 0
     while True:
         try:
-            run()
-        except Exception as e:
-            print("Restarting...", e)
-            time.sleep(5)
+            run_cycle()
+            if cycle_count % 10 == 0:
+                train_and_push_model()
+            cycle_count += 1
+        except Exception as error:  # pragma: no cover
+            print(f"Cycle failed: {error}")
+        time.sleep(POLL_INTERVAL)
+
+if __name__ == "__main__":
+    main()
