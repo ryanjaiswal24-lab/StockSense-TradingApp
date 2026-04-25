@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StockSense Portfolio Edition</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="index-bar" class="index-bar"></div>
+  <canvas id="bg-canvas"></canvas>
+
+  <div id="appShell" class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <p class="eyebrow">Realtime Dashboard</p>
+        <h1>StockSense</h1>
+      </div>
+      <nav class="nav-pills">
+        <a href="#section-news" class="nav-pill active" data-tab="news">News</a>
+        <a href="#section-ai" class="nav-pill" data-tab="ai">AI Picks</a>
+        <a href="#section-live" class="nav-pill" data-tab="live">Live</a>
+        <a href="#section-portfolio" class="nav-pill" data-tab="portfolio">Portfolio</a>
+        <a href="#section-profile" class="nav-pill" data-tab="profile">Profile</a>
+      </nav>
+      <div class="top-actions">
+        <div id="profile-pill" class="profile-pill" style="display:none;">
+          <img id="profile-pic" alt="Profile" />
+          <div>
+            <p id="profile-name">Guest</p>
+            <span id="profile-email">Not logged in</span>
+          </div>
+        </div>
+        <button id="loginBtn" class="btn btn-primary">Login</button>
+        <button id="logoutBtn" class="btn btn-ghost" style="display:none;">Logout</button>
+        <span id="authStatus" class="auth-status"></span>
+      </div>
+    </header>
+
+
+
+    <section class="hero-strip">
+      <article class="hero-card"><span class="hero-label">Market</span><div id="market-pill" class="market-pill closed"><span id="marketPhase">Waiting...</span></div><p id="marketSummary" class="muted">No market status yet</p></article>
+      <article class="hero-card"><span class="hero-label">Gainers</span><strong id="stat-gainers" class="hstat-val">0</strong></article>
+      <article class="hero-card"><span class="hero-label">Losers</span><strong id="stat-losers" class="hstat-val">0</strong></article>
+      <article class="hero-card"><span class="hero-label">Tracked</span><strong id="trackedCount" class="hstat-val">0</strong></article>
+      <article class="hero-card"><span class="hero-label">Average Move</span><strong id="stat-avg" class="hstat-val">0.00%</strong></article>
+      <article class="hero-card"><span class="hero-label">Last Sync</span><strong id="lastRefresh" class="hstat-val">—</strong></article>
+    </section>
+
+    <main class="layout">
+      <div class="main-col">
+
+
+        <section id="section-ai" class="page-section">
+          <div class="section-head">
+            <div><p class="eyebrow">Machine Learning</p><h2>AI Suggestions</h2></div>
+          </div>
+          <div id="aiGrid" class="picks-grid"></div>
+        </section>
+
+        <section id="section-live" class="page-section">
+          <div class="section-head">
+            <div><p class="eyebrow">Realtime</p><h2>Market Overview</h2></div>
+            <div class="section-actions"><input id="live-search" class="input" type="text" placeholder="Filter ticker" /><button id="btn-live-search" class="btn btn-primary" style="margin-left: 8px; margin-right: 8px;">Search</button><span id="live-count" class="ctrl-badge">0 stocks</span></div>
+          </div>
+          
+          <div class="ticker-wrap" style="margin-top: 0; margin-bottom: 24px;">
+            <div id="ticker-tape" class="ticker-tape"></div>
+          </div>
+
+          <div id="live-tables-container">
+            <!-- Populated by app.js with category tables -->
+          </div>
+        </section>
+
+        <section id="section-news" class="page-section active">
+          <div class="section-head">
+            <div><p class="eyebrow">Headlines</p><h2>News and market mood</h2></div>
+            <div class="section-actions"><input id="news-input" class="input" type="text" placeholder="Search headline or source" /><button id="btn-news-clear" class="btn btn-ghost">Clear</button></div>
+          </div>
+          <div id="newsGrid" class="news-feed"></div>
+        </section>
+
+
+
+        <section id="section-portfolio" class="page-section">
+          <div class="section-head"><div><p class="eyebrow">Portfolio</p><h2>Track your holdings</h2></div><div class="badge-row"><span id="port-badge-val" class="ctrl-badge">Value ₹0</span><span id="port-badge-pnl" class="ctrl-badge">P&L ₹0</span></div></div>
+          <div class="portfolio-form"><input id="port-ticker" class="input" type="text" placeholder="Ticker" /><input id="port-qty" class="input" type="number" min="1" step="1" placeholder="Quantity" /><input id="port-buy-price" class="input" type="number" min="0" step="0.01" placeholder="Buy price" /><button id="btn-port-add" class="btn btn-primary">Add holding</button></div>
+          <div class="portfolio-summary">
+            <article class="hero-card"><span class="hero-label">Invested</span><strong id="pm-invested" class="pm-val">₹0</strong></article>
+            <article class="hero-card"><span class="hero-label">Current</span><strong id="pm-current" class="pm-val">₹0</strong></article>
+            <article class="hero-card"><span class="hero-label">Total P&L</span><strong id="pm-pnl" class="pm-val">₹0</strong></article>
+            <article class="hero-card"><span class="hero-label">Day Gain</span><strong id="pm-daygain" class="pm-val">₹0</strong></article>
+          </div>
+          <div class="table-shell">
+            <table class="data-table">
+              <thead><tr><th>Ticker</th><th>Qty</th><th>Buy</th><th>Current</th><th>Invested</th><th>Value</th><th>P&L</th><th>P&L %</th><th>Action</th></tr></thead>
+              <tbody id="port-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="section-profile" class="page-section">
+          <div class="section-head"><div><p class="eyebrow">Account</p><h2>Profile</h2></div></div>
+          <div class="profile-grid">
+            <article class="profile-card"><img id="profile-card-pic" alt="Profile" /><h3 id="profile-card-name">Guest</h3><p id="profile-card-email" class="muted">Not logged in</p></article>
+            <article class="profile-card"><h3>How it works</h3><p class="muted">Google login unlocks Firebase reads. Portfolio data syncs under your account, while the Python backend continues writing market data with the Admin SDK.</p></article>
+            <article class="profile-card">
+              <h3>Preferences</h3>
+              <div class="field">
+                <label>Display Name</label>
+                <input id="displayNameInput" class="input" type="text" placeholder="Custom Display Name" />
+              </div>
+              <div class="field">
+                <label>Theme Accent</label>
+                <select id="themeAccentInput" class="select">
+                  <option value="emerald">Emerald</option>
+                  <option value="amber">Amber</option>
+                  <option value="cyan">Cyan</option>
+                </select>
+              </div>
+              <button id="saveProfileBtn" class="btn btn-primary" style="margin-top: 10px;">Save Profile</button>
+              <span id="profileSaveStatus" class="muted" style="margin-top: 5px;"></span>
+            </article>
+          </div>
+        </section>
+      </div>
+
+      <aside class="sidebar">
+        <article class="side-card"><h3>Top Gainers</h3><div id="top-gainers"></div></article>
+        <article class="side-card"><h3>Top Losers</h3><div id="top-losers"></div></article>
+        <article class="side-card"><h3>Sector Heatmap</h3><div id="sector-grid" class="sector-grid"></div></article>
+      </aside>
+    </main>
+
+    <footer class="footer"><span>StockSense realtime stack</span><span>Last sync: <strong id="footer-sync">—</strong></span></footer>
+  </div>
+
+  <div id="toast-stack" class="toast-stack"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
