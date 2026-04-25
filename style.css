@@ -468,6 +468,138 @@ body[data-accent="cyan"] {
   animation: tape-scroll 28s linear infinite;
 }
 
+/* Mobile Navigation Bar */
+.mobile-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 64px;
+  background: rgba(16, 24, 39, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--line);
+  z-index: 2000;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 0 12px;
+}
+
+.m-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  gap: 4px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.m-nav-item.active {
+  color: var(--accent);
+}
+
+.m-nav-icon {
+  font-size: 1.25rem;
+}
+
+.m-nav-item small {
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .app-shell {
+    padding: 12px 12px 80px;
+  }
+
+  .topbar {
+    grid-template-columns: 1fr auto;
+    padding: 12px;
+  }
+
+  .nav-pills {
+    display: none;
+  }
+
+  .mobile-nav {
+    display: grid;
+  }
+
+  .hero-strip {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .hero-card {
+    padding: 10px 12px;
+  }
+
+  .hstat-val {
+    font-size: 1rem;
+  }
+
+  .layout {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .sidebar {
+    order: -1;
+  }
+
+  .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .section-actions {
+    width: 100%;
+  }
+
+  .section-actions .input {
+    flex: 1;
+  }
+
+  .picks-grid, .live-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pc-top {
+    grid-template-columns: 48px 1fr auto;
+  }
+
+  .pc-bar-zone {
+    display: none;
+  }
+
+  .index-bar {
+    gap: 20px;
+    padding: 8px 16px;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .brand h1 {
+    font-size: 1.2rem;
+  }
+
+  .eyebrow {
+    font-size: 0.6rem;
+  }
+}
+}
+
 .tape-item {
   display: inline-flex;
   gap: 8px;

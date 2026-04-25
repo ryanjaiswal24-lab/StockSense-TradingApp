@@ -163,9 +163,9 @@ btnPortAdd?.addEventListener("click", async () => {
 });
 
 
-document.querySelectorAll(".nav-pill").forEach((button) => {
+document.querySelectorAll(".nav-pill, .m-nav-item").forEach((button) => {
   button.addEventListener("click", (e) => {
-    e.preventDefault();
+    if (button.classList.contains("nav-pill")) e.preventDefault();
     activateTab(button.dataset.tab);
   });
 });
@@ -211,7 +211,7 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 function activateTab(tabName) {
-  document.querySelectorAll(".nav-pill").forEach((button) => {
+  document.querySelectorAll(".nav-pill, .m-nav-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.tab === tabName);
   });
 

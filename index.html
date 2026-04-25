@@ -2,8 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>StockSense Portfolio Edition</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0a0f1c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>StockSense AI Dashboard</title>
   <link rel="icon" href="data:," />
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -139,6 +142,25 @@
   </div>
 
   <div id="toast-stack" class="toast-stack"></div>
+
+  <nav id="mobile-nav" class="mobile-nav">
+    <button class="m-nav-item active" data-tab="news">
+      <span class="m-nav-icon">🏠</span>
+      <small>Home</small>
+    </button>
+    <button class="m-nav-item" data-tab="ai">
+      <span class="m-nav-icon">🤖</span>
+      <small>AI Picks</small>
+    </button>
+    <button class="m-nav-item" data-tab="live">
+      <span class="m-nav-icon">📊</span>
+      <small>Live</small>
+    </button>
+    <button class="m-nav-item" data-tab="portfolio">
+      <span class="m-nav-icon">💼</span>
+      <small>Holdings</small>
+    </button>
+  </nav>
 
   <script type="module" src="app.js"></script>
 </body>
