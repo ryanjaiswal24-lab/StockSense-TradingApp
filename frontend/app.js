@@ -49,6 +49,7 @@ const state = {
 const authGate = document.getElementById("authGate");
 const appShell = document.getElementById("appShell");
 const loginBtn = document.getElementById("loginBtn");
+const gateLoginBtn = document.getElementById("gateLoginBtn");
 const logoutBtn = document.getElementById("logoutBtn");
 const authStatus = document.getElementById("authStatus");
 const picksGrid = document.getElementById("picksGrid");
@@ -97,6 +98,17 @@ loginBtn?.addEventListener("click", async () => {
     await signInWithPopup(auth, provider);
   } catch (error) {
     if (authStatus) authStatus.textContent = error.message;
+    console.error("Login error:", error);
+  }
+});
+
+gateLoginBtn?.addEventListener("click", async () => {
+  const gateAuthStatus = document.getElementById("gateAuthStatus");
+  if (gateAuthStatus) gateAuthStatus.textContent = "Opening Google sign-in...";
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (error) {
+    if (gateAuthStatus) gateAuthStatus.textContent = error.message;
     console.error("Login error:", error);
   }
 });
