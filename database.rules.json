@@ -1,0 +1,28 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "stocks": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "live_prices": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "news_cache": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "market_status": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid"
+      }
+    }
+  }
+}

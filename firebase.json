@@ -1,14 +1,22 @@
 {
   "hosting": {
-    "public": "predictor",
+    "public": "predictor/frontend",
     "ignore": [
       "firebase.json",
       "database.rules.json",
       "*.py",
       "*.cpp",
+      "*.exe",
       "*.md",
       "serviceAccountKey.json",
-      "node_modules/**"
+      "node_modules/**",
+      "__pycache__/**",
+      "*.pyc",
+      "tempCodeRunnerFile.*",
+      "requirements.txt",
+      "deploy.md",
+      "README.md",
+      "Predictor here.md"
     ],
     "rewrites": [
       { "source": "**", "destination": "/index.html" }
@@ -16,5 +24,9 @@
   },
   "database": {
     "rules": "database.rules.json"
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
   }
 }
