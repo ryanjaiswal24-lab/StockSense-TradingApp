@@ -380,7 +380,7 @@ function renderPortfolio(portfolio) {
     const currentValue = Number(item.qty || 0) * Number(item.buyPrice || 0);
     return `
       <tr>
-        <td>${item.ticker}</td>
+        <td style="cursor: pointer; color: var(--accent); font-weight: bold;" onclick="window.open('https://finance.yahoo.com/quote/${item.ticker}', '_blank')">${item.ticker}</td>
         <td>${item.qty}</td>
         <td>${formatCurrency(item.buyPrice)}</td>
         <td>${formatCurrency(currentValue)}</td>
@@ -465,12 +465,12 @@ function renderSidebar(stocks) {
   
   if (topGainers) {
     const gainers = sortedByChange.slice(0, 3).filter(s => (Number(s.change_pct) || 0) > 0);
-    topGainers.innerHTML = gainers.map(s => `<div class="mover-row"><span>${s.ticker}</span><span class="positive">+${Number(s.change_pct).toFixed(2)}%</span></div>`).join("") || emptyState("No gainers");
+    topGainers.innerHTML = gainers.map(s => `<div class="mover-row" style="cursor: pointer;" onclick="window.open('https://finance.yahoo.com/quote/${s.ticker}', '_blank')"><span>${s.ticker}</span><span class="positive">+${Number(s.change_pct).toFixed(2)}%</span></div>`).join("") || emptyState("No gainers");
   }
   
   if (topLosers) {
     const losers = sortedByChange.slice(-3).reverse().filter(s => (Number(s.change_pct) || 0) < 0);
-    topLosers.innerHTML = losers.map(s => `<div class="mover-row"><span>${s.ticker}</span><span class="negative">${Number(s.change_pct).toFixed(2)}%</span></div>`).join("") || emptyState("No losers");
+    topLosers.innerHTML = losers.map(s => `<div class="mover-row" style="cursor: pointer;" onclick="window.open('https://finance.yahoo.com/quote/${s.ticker}', '_blank')"><span>${s.ticker}</span><span class="negative">${Number(s.change_pct).toFixed(2)}%</span></div>`).join("") || emptyState("No losers");
   }
   
   if (sectorGrid) {
@@ -674,7 +674,7 @@ function renderAIPicks() {
     .map((stock) => {
       const signal = Array.isArray(stock.signals) ? stock.signals.join(", ") : "Bullish";
       return `
-        <article class="price-card" style="border-left: 4px solid var(--accent);">
+        <article class="price-card" style="border-left: 4px solid var(--accent); cursor: pointer;" onclick="window.open('https://finance.yahoo.com/quote/${stock.ticker}', '_blank')">
           <h4>${stock.ticker}</h4>
           <p class="price-value positive">${formatCurrency(stock.price)}</p>
           <div class="price-row"><span>Sector</span><span>${stock.sector || "N/A"}</span></div>
