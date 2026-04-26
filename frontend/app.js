@@ -465,12 +465,12 @@ function renderSidebar(stocks) {
   
   if (topGainers) {
     const gainers = sortedByChange.slice(0, 3).filter(s => (Number(s.change_pct) || 0) > 0);
-    topGainers.innerHTML = gainers.map(s => `<div class="mover-row" style="cursor: pointer;" onclick="window.open('https://finance.yahoo.com/quote/${s.ticker}', '_blank')"><span>${s.ticker}</span><span class="positive">+${Number(s.change_pct).toFixed(2)}%</span></div>`).join("") || emptyState("No gainers");
+    topGainers.innerHTML = gainers.map(s => `<div class="mover-row" style="cursor: pointer;" onclick="window.jumpToStock('${s.ticker}')"><span>${s.ticker}</span><span class="positive">+${Number(s.change_pct).toFixed(2)}%</span></div>`).join("") || emptyState("No gainers");
   }
   
   if (topLosers) {
     const losers = sortedByChange.slice(-3).reverse().filter(s => (Number(s.change_pct) || 0) < 0);
-    topLosers.innerHTML = losers.map(s => `<div class="mover-row" style="cursor: pointer;" onclick="window.open('https://finance.yahoo.com/quote/${s.ticker}', '_blank')"><span>${s.ticker}</span><span class="negative">${Number(s.change_pct).toFixed(2)}%</span></div>`).join("") || emptyState("No losers");
+    topLosers.innerHTML = losers.map(s => `<div class="mover-row" style="cursor: pointer;" onclick="window.jumpToStock('${s.ticker}')"><span>${s.ticker}</span><span class="negative">${Number(s.change_pct).toFixed(2)}%</span></div>`).join("") || emptyState("No losers");
   }
   
   if (sectorGrid) {
@@ -536,7 +536,7 @@ function renderLive(stocks) {
         <details class="scrip-accordion" id="details-${safeTicker}">
           <summary class="scrip-summary">
             <div class="scrip-grid">
-              <span class="td-ticker" style="cursor: pointer; color: var(--accent);" onclick="window.open('https://finance.yahoo.com/quote/${stock.ticker}', '_blank')">${stock.ticker}</span>
+              <span class="td-ticker" style="color: var(--accent); font-weight: bold;">${stock.ticker}</span>
               <strong class="price-value ${cls}">${formatCurrency(stock.price)}</strong>
               <span class="${cls}">${icon} ${change.toFixed(2)}%</span>
               <span class="muted">${formatVolume(stock.volume)}</span>
@@ -562,6 +562,7 @@ function renderLive(stocks) {
               <div class="scrip-stat"><span class="muted">Sector:</span> <strong>${stock.sector || "N/A"}</strong></div>
             </div>
             <div class="scrip-actions" style="width: 100%; margin-top: 12px; display: flex; justify-content: flex-end; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding-top: 12px;">
+              <button class="btn btn-ghost btn-sm" onclick="window.open('https://finance.yahoo.com/quote/${stock.ticker}', '_blank')">📈 Chart</button>
               <button class="btn btn-ghost btn-sm" id="btn-train-${safeTicker}" onclick="window.requestAITrain('${stock.ticker}')">Train AI</button>
               <div style="display: flex; align-items: center; gap: 4px;">
                 <span class="muted" style="font-size: 0.8rem;">Qty:</span>
@@ -674,17 +675,32 @@ function renderAIPicks() {
     .map((stock) => {
       const signal = Array.isArray(stock.signals) ? stock.signals.join(", ") : "Bullish";
       return `
-        <article class="price-card" style="border-left: 4px solid var(--accent); cursor: pointer;" onclick="window.open('https://finance.yahoo.com/quote/${stock.ticker}', '_blank')">
+        <article class="price-card" style="border-left: 4px solid var(--accent); cursor: pointer;" onclick="window.jumpToStock('${stock.ticker}')">
           <h4>${stock.ticker}</h4>
           <p class="price-value positive">${formatCurrency(stock.price)}</p>
           <div class="price-row"><span>Sector</span><span>${stock.sector || "N/A"}</span></div>
           <div class="price-row"><span>Signal</span><span style="color: var(--accent); font-weight: bold;">${signal}</span></div>
           <div class="price-row"><span>AI Score</span><span>${formatScore(stock.ml)}</span></div>
+          <div style="margin-top: 12px; font-size: 0.8rem; color: var(--accent); text-align: right;">View Details →</div>
         </article>
       `;
     })
     .join("");
 }
+
+window.jumpToStock = (ticker) => {
+  activateTab("live");
+  setTimeout(() => {
+    const safeTicker = ticker.replace(/[^a-zA-Z0-9]/g, "_");
+    const el = document.getElementById(`details-${safeTicker}`);
+    if (el) {
+      el.setAttribute("open", "");
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.style.boxShadow = "0 0 20px var(--accent)";
+      setTimeout(() => el.style.boxShadow = "", 2000);
+    }
+  }, 100);
+};
 
 function renderIndexBar(indices) {
   if (!indexBar) return;
