@@ -697,8 +697,13 @@ function renderIndexBar(indices) {
   indexBar.innerHTML = items.map(idx => {
     const cls = idx.change >= 0 ? "pos" : "neg";
     const arrow = idx.change >= 0 ? "▲" : "▼";
+    let ticker = "^INDIAVIX";
+    if (idx.name === "NIFTY 50" || idx.name === "GIFT Nifty (Proxy)") ticker = "^NSEI";
+    else if (idx.name === "BANK NIFTY") ticker = "^NSEBANK";
+    else if (idx.name === "SENSEX") ticker = "^BSESN";
+    
     return `
-      <div class="index-item" style="cursor: pointer;" onclick="window.open('https://finance.yahoo.com/quote/${idx.name === \'NIFTY 50\' || idx.name === \'GIFT Nifty (Proxy)\' ? \'^NSEI\' : (idx.name === \'BANK NIFTY\' ? \'^NSEBANK\' : (idx.name === \'SENSEX\' ? \'^BSESN\' : \'^INDIAVIX\'))}', '_blank')">
+      <div class="index-item" style="cursor: pointer;" onclick="window.open('https://finance.yahoo.com/quote/${ticker}', '_blank')">
         <span class="index-name">${idx.name}</span>
         <span class="index-price">${idx.price.toLocaleString("en-IN")}</span>
         <span class="index-change ${cls}">${arrow} ${Math.abs(idx.change_pct).toFixed(2)}%</span>
