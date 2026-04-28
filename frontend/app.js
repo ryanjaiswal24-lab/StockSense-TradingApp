@@ -115,9 +115,15 @@ gateLoginBtn?.addEventListener("click", async () => {
   try {
     await signInWithPopup(auth, provider);
   } catch (error) {
-    if (gateAuthStatus) gateAuthStatus.textContent = error.message;
+    if (gateAuthStatus) gateAuthStatus.textContent = "Error: " + error.message;
     console.error("Login error:", error);
   }
+});
+
+document.getElementById("guestLoginBtn")?.addEventListener("click", () => {
+  if (authGate) authGate.classList.add("hidden");
+  appShell?.classList.remove("hidden");
+  startListeners();
 });
 
 logoutBtn?.addEventListener("click", async () => {
