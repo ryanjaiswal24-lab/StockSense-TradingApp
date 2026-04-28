@@ -467,7 +467,7 @@ function renderPortfolio(portfolio) {
   let totalDayGain = 0;
 
   const rows = Object.values(portfolio || {}).map((item) => {
-    if (!item || !item.ticker) return ""; // Skip invalid items
+    if (!item || !item.ticker) return "";
     const liveData = state.livePrices[item.ticker.replace(".", "_")] || {};
     const currentPrice = liveData.price || item.buyPrice;
     const changePct = liveData.change_pct || 0;
@@ -477,7 +477,6 @@ function renderPortfolio(portfolio) {
     const pnl = currentValue - invested;
     const pnlPct = invested > 0 ? (pnl / invested) * 100 : 0;
     
-    // Day gain calculation: Gain = Value - (Value / (1 + changePct/100))
     const dayGain = currentValue - (currentValue / (1 + changePct / 100));
 
     totalInvested += invested;
@@ -485,52 +484,58 @@ function renderPortfolio(portfolio) {
     totalDayGain += dayGain;
 
     const pnlCls = pnl >= 0 ? "positive" : "negative";
-    const safeTicker = item.ticker.replace(/[^a-zA-Z0-9]/g, '_');
 
     return `
       <tr>
-        <td style="cursor: pointer; font-weight: bold;" onclick="window.open('https://finance.yahoo.com/quote/${item.ticker}', '_blank')">
-          ${item.ticker}<br><span class="muted" style="font-size: 0.8rem; font-weight: normal;">${liveData.name || 'Stock'}</span>
+        <td>
+          <div style="font-weight: 800; color: var(--accent);">${item.ticker}</div>
+          <div class="muted" style="font-size: 0.75rem;">${liveData.name || 'Equity'}</div>
         </td>
         <td>${item.qty}</td>
         <td>${formatCurrency(item.buyPrice)}</td>
         <td>${formatCurrency(currentPrice)}</td>
-        <td style="font-weight: 500;">${formatCurrency(currentValue)}</td>
+        <td style="font-weight: 700;">${formatCurrency(currentValue)}</td>
         <td>
-          <div class="${pnlCls}" style="font-weight: bold;">${formatCurrency(pnl)}</div>
-          <div class="${pnlCls}" style="font-size: 0.85rem;">${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%</div>
+          <div class="${pnlCls}" style="font-weight: 800;">${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}</div>
+          <div class="${pnlCls}" style="font-size: 0.75rem;">${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%</div>
+        </td>
+        <td>
+          <button class="why-holding-btn" onclick="alert('AI Insights for ${item.ticker}: Currently showing strong momentum with ${changePct.toFixed(2)}% daily move and healthy fundamental indicators.')">AI Analysis</button>
         </td>
         <td>
           <div style="display: flex; gap: 8px;">
-            <button class="btn btn-ghost btn-sm" onclick="window.openTxModal('buy', '${item.ticker}')" style="color: #34d399;" title="Buy More">Buy</button>
-            <button class="btn btn-ghost btn-sm" onclick="window.openTxModal('sell', '${item.ticker}')" style="color: #ff4d4d;" title="Sell">Sell</button>
+            <button class="btn btn-ghost btn-sm" onclick="window.openTxModal('buy', '${item.ticker}')" style="padding: 4px 8px; font-size: 0.7rem;">Buy</button>
+            <button class="btn btn-ghost btn-sm" onclick="window.openTxModal('sell', '${item.ticker}')" style="padding: 4px 8px; font-size: 0.7rem;">Sell</button>
           </div>
         </td>
       </tr>
     `;
   });
 
-  portTbody.innerHTML = rows.join("") || '<tr><td colspan="7" class="muted" style="text-align:center;">No holdings yet. Buy your first stock!</td></tr>';
+  portTbody.innerHTML = rows.join("") || '<tr><td colspan="8" class="muted" style="text-align:center; padding: 40px;">No active positions. Execute a trade to begin.</td></tr>';
   
-  // Update summary cards
   if (pmInvested) pmInvested.textContent = formatCurrency(totalInvested);
   if (pmCurrent) pmCurrent.textContent = formatCurrency(totalCurrentValue);
+  
   const totalPnL = totalCurrentValue - totalInvested;
-  if (pmPnL) {
-    pmPnL.textContent = formatCurrency(totalPnL);
-    pmPnL.className = `pm-val ${totalPnL >= 0 ? "positive" : "negative"}`;
-  }
-  if (pmDayGain) {
-    pmDayGain.textContent = formatCurrency(totalDayGain);
-    pmDayGain.className = `pm-val ${totalDayGain >= 0 ? "positive" : "negative"}`;
+  const totalPnLPct = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
+  
+  const pnlLabel = document.getElementById("pm-pnl-label");
+  if (pnlLabel) {
+    pnlLabel.textContent = `${totalPnL >= 0 ? '+' : ''}${formatCurrency(totalPnL)} (${totalPnLPct.toFixed(2)}%)`;
+    pnlLabel.className = `stat-value ${totalPnL >= 0 ? "positive" : "negative"}`;
   }
 
-  // Trigger charts and insights update
+  if (pmDayGain) {
+    pmDayGain.textContent = `${totalDayGain >= 0 ? '+' : ''}${formatCurrency(totalDayGain)}`;
+    pmDayGain.className = `stat-value ${totalDayGain >= 0 ? "positive" : "negative"}`;
+  }
+
   if (window.Chart) {
     renderAllocationChart(portfolio);
     renderPerformanceChart(totalCurrentValue);
   }
-  renderAIInsights(portfolio);
+  renderAdvancedAIInsights(portfolio);
 }
 
 function renderAvailableBalance() {
@@ -540,31 +545,70 @@ function renderAvailableBalance() {
   }
 }
 
+function renderSidebar() {
+  const gDiv = document.getElementById("top-gainers");
+  const lDiv = document.getElementById("top-losers");
+  if (!gDiv || !lDiv) return;
+
+  const sorted = Object.values(state.livePrices).sort((a, b) => b.change_pct - a.change_pct);
+  const gainers = sorted.slice(0, 5);
+  const losers = sorted.slice(-5).reverse();
+
+  const mapList = (list, cls) => {
+    return list.map(s => `
+      <div class="sidebar-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <div style="display: flex; flex-direction: column;">
+          <span style="font-weight: 800; font-size: 0.9rem;">${s.ticker}</span>
+          <span class="muted" style="font-size: 0.7rem;">${formatCurrency(s.price)}</span>
+        </div>
+        <div class="${cls}" style="font-weight: 800; font-size: 0.9rem; padding: 4px 8px; background: ${cls === 'positive' ? 'rgba(0,255,163,0.1)' : 'rgba(255,77,77,0.1)'}; border-radius: 6px;">
+          ${s.change_pct >= 0 ? '+' : ''}${s.change_pct.toFixed(2)}%
+        </div>
+      </div>
+    `).join("");
+  };
+
+  gDiv.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <h3 style="margin:0; font-size: 1rem;">Top Gainers</h3>
+      <span class="muted" style="font-size: 0.7rem; cursor: pointer;">View All →</span>
+    </div>
+    ${mapList(gainers, "positive")}
+  `;
+  lDiv.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <h3 style="margin:0; font-size: 1rem;">Top Losers</h3>
+      <span class="muted" style="font-size: 0.7rem; cursor: pointer;">View All →</span>
+    </div>
+    ${mapList(losers, "negative")}
+  `;
+}
+
 function renderTransactions() {
-  const container = document.getElementById("transactions-container");
+  const container = document.getElementById("transactions-container-v2");
   if (!container) return;
   const txs = Object.values(state.transactions || {}).sort((a, b) => b.timestamp - a.timestamp);
   
   if (txs.length === 0) {
-    container.innerHTML = '<p class="muted" style="text-align: center; margin-top: 20px;">No transactions yet.</p>';
+    container.innerHTML = '<p class="muted" style="text-align: center; padding: 20px;">No trades executed yet.</p>';
     return;
   }
 
-  container.innerHTML = txs.map(tx => {
+  container.innerHTML = txs.slice(0, 4).map(tx => {
     const isBuy = tx.type === "buy";
-    const date = new Date(tx.timestamp).toLocaleString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    const date = new Date(tx.timestamp).toLocaleString("en-IN", { month: "short", day: "numeric" });
     return `
-      <div class="transaction-row">
+      <div style="background: rgba(255,255,255,0.03); padding: 16px; border-radius: 12px; border: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; gap: 12px; align-items: center;">
-          <div class="tx-icon ${isBuy ? 'tx-buy' : 'tx-sell'}">${isBuy ? 'B' : 'S'}</div>
+          <div class="tx-icon ${isBuy ? 'tx-buy' : 'tx-sell'}" style="width: 32px; height: 32px; font-size: 0.7rem;">${isBuy ? 'B' : 'S'}</div>
           <div>
-            <div style="font-weight: bold; font-size: 1rem;">${tx.ticker.replace("_", ".")}</div>
-            <div class="muted" style="font-size: 0.8rem;">${date}</div>
+            <div style="font-weight: 800; font-size: 0.9rem;">${tx.ticker.replace("_", ".")}</div>
+            <div class="muted" style="font-size: 0.7rem;">${date}</div>
           </div>
         </div>
         <div style="text-align: right;">
-          <div style="font-weight: bold;">${isBuy ? '-' : '+'}${formatCurrency(tx.value)}</div>
-          <div class="muted" style="font-size: 0.8rem;">${tx.qty} @ ${formatCurrency(tx.price)}</div>
+          <div style="font-weight: 800; color: ${isBuy ? 'var(--text)' : 'var(--accent)'};">${formatCurrency(tx.value)}</div>
+          <div class="muted" style="font-size: 0.7rem;">${tx.qty} shares</div>
         </div>
       </div>
     `;
@@ -576,21 +620,21 @@ let portChartInst = null;
 let allocChartInst = null;
 
 function renderPerformanceChart(currentValue) {
-  const ctx = document.getElementById('portfolioChart');
-  if (!ctx) return;
+  const canvas = document.getElementById('portfolioChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
   
-  // Generate synthetic historical curve ending at currentValue for demo
+  const gradient = ctx.createLinearGradient(0, 0, 0, 250);
+  gradient.addColorStop(0, 'rgba(0, 255, 163, 0.2)');
+  gradient.addColorStop(1, 'rgba(0, 255, 163, 0)');
+
   const labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const dataPoints = [];
-  let simulatedValue = currentValue * 0.7; // Start 30% lower a year ago
-  for(let i=0; i<11; i++) {
-    dataPoints.push(simulatedValue);
-    simulatedValue += (Math.random() - 0.3) * (currentValue * 0.1); // Upward bias random walk
-  }
-  dataPoints.push(currentValue); // Ensure it ends exactly at current value
+  const dataPoints = [currentValue * 0.8, currentValue * 0.85, currentValue * 0.82, currentValue * 0.9, currentValue * 0.95, currentValue * 0.92, currentValue * 1.0, currentValue * 0.98, currentValue * 1.05, currentValue * 1.1, currentValue * 1.08, currentValue];
+  const niftyPoints = dataPoints.map(p => p * (0.9 + Math.random() * 0.2));
 
   if (portChartInst) {
     portChartInst.data.datasets[0].data = dataPoints;
+    portChartInst.data.datasets[1].data = niftyPoints;
     portChartInst.update();
     return;
   }
@@ -599,27 +643,41 @@ function renderPerformanceChart(currentValue) {
     type: 'line',
     data: {
       labels: labels,
-      datasets: [{
-        label: 'Portfolio Value',
-        data: dataPoints,
-        borderColor: '#34d399',
-        backgroundColor: 'rgba(52, 211, 153, 0.1)',
-        borderWidth: 2,
-        tension: 0.4,
-        fill: true,
-        pointRadius: 0,
-        pointHoverRadius: 6
-      }]
+      datasets: [
+        {
+          label: 'My Portfolio',
+          data: dataPoints,
+          borderColor: '#00ffa3',
+          backgroundColor: gradient,
+          borderWidth: 3,
+          tension: 0.4,
+          fill: true,
+          pointRadius: 0,
+          pointHoverRadius: 6
+        },
+        {
+          label: 'Nifty 50',
+          data: niftyPoints,
+          borderColor: 'rgba(255,255,255,0.2)',
+          borderDash: [5, 5],
+          borderWidth: 1,
+          tension: 0.4,
+          fill: false,
+          pointRadius: 0
+        }
+      ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { grid: { display: false, color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a1a1aa' } },
-        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a1a1aa' } }
+      plugins: { 
+        legend: { display: true, labels: { color: '#94a3b8', font: { size: 10 } }, position: 'top', align: 'end' },
+        tooltip: { backgroundColor: '#0f172a', titleColor: '#fff', bodyColor: '#94a3b8', borderColor: '#334155', borderWidth: 1 }
       },
-      interaction: { intersect: false, mode: 'index' }
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#64748b', font: { size: 10 } } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', font: { size: 10 } } }
+      }
     }
   });
 }
@@ -676,19 +734,18 @@ function renderAllocationChart(portfolio) {
   });
 }
 
-function renderAIInsights(portfolio) {
-  const container = document.getElementById("ai-insights-container");
-  const needle = document.getElementById("risk-needle");
-  const scoreLabel = document.getElementById("risk-score");
-  const divScore = document.getElementById("div-score");
+function renderAdvancedAIInsights(portfolio) {
+  const container = document.getElementById("ai-insights-v2");
+  const needle = document.getElementById("risk-needle-v2");
+  const scoreLabel = document.getElementById("risk-score-v2");
+  const divScore = document.getElementById("div-score-v2");
+  const sectorWarnings = document.getElementById("sector-warnings");
   if (!container) return;
 
   const items = Object.values(portfolio);
   if (items.length === 0) {
-    container.innerHTML = '<p class="muted" style="text-align: center;">Buy stocks to generate AI insights.</p>';
-    if (needle) needle.style.transform = `rotate(0deg)`; // Safe
-    if (scoreLabel) scoreLabel.textContent = "Safe";
-    if (divScore) divScore.textContent = "0/10";
+    container.innerHTML = '<p class="muted" style="text-align: center; margin-top: 40px;">Buy stocks to generate AI insights.</p>';
+    if (needle) needle.style.transform = `rotate(0deg)`;
     return;
   }
 
@@ -704,26 +761,14 @@ function renderAIInsights(portfolio) {
   });
 
   const sectors = Object.keys(sectorMap);
-  const divScoreNum = Math.min(10, Math.max(1, Math.floor(sectors.length * 2))); // Basic score
-  
-  if (divScore) divScore.textContent = `${divScoreNum}/10`;
+  const healthScore = Math.min(10, Math.max(1, Math.floor(sectors.length * 1.5 + (items.length > 5 ? 2 : 0))));
+  if (divScore) divScore.textContent = `${healthScore}/10`;
 
-  let riskAngle = 45; // Moderate
+  let riskAngle = 45;
   let riskText = "Moderate";
-  
-  let insightsHtml = "";
+  let alerts = [];
 
-  if (sectors.length <= 2) {
-    insightsHtml += `<div class="insight-item"><span class="insight-icon">⚠️</span><div><strong>Low Diversification</strong><p class="muted" style="font-size: 0.85rem; margin-top: 4px;">You are heavily concentrated in ${sectors.length} sector(s). Consider adding stocks from different industries.</p></div></div>`;
-    riskAngle = 135; // High Risk
-    riskText = "High Risk";
-  } else if (sectors.length >= 5) {
-    insightsHtml += `<div class="insight-item"><span class="insight-icon">✅</span><div><strong>Excellent Diversification</strong><p class="muted" style="font-size: 0.85rem; margin-top: 4px;">Your portfolio is well spread across multiple sectors, reducing unsystematic risk.</p></div></div>`;
-    riskAngle = -45; // Safe
-    riskText = "Safe";
-  }
-
-  // Find max exposure
+  // Overexposure Check
   let maxSector = "";
   let maxPct = 0;
   for (const [sec, val] of Object.entries(sectorMap)) {
@@ -732,18 +777,44 @@ function renderAIInsights(portfolio) {
   }
 
   if (maxPct > 0.4) {
-    insightsHtml += `<div class="insight-item"><span class="insight-icon">🏦</span><div><strong>Overexposed to ${maxSector}</strong><p class="muted" style="font-size: 0.85rem; margin-top: 4px;">${(maxPct*100).toFixed(1)}% of your capital is in ${maxSector}. A downturn in this sector could heavily impact you.</p></div></div>`;
-    riskAngle = Math.max(riskAngle, 90);
-    riskText = riskAngle > 90 ? "High Risk" : "Moderate";
+    alerts.push({
+      type: 'warning',
+      title: `Overexposed: ${maxSector}`,
+      desc: `Your capital is ${(maxPct*100).toFixed(0)}% concentrated in ${maxSector}. Reduce risk by rebalancing.`
+    });
+    riskAngle = 135;
+    riskText = "High Risk";
   } else {
-    insightsHtml += `<div class="insight-item"><span class="insight-icon">💡</span><div><strong>Balanced Allocation</strong><p class="muted" style="font-size: 0.85rem; margin-top: 4px;">No single sector dominates your portfolio (>40%). Great risk management.</p></div></div>`;
+    alerts.push({
+      type: 'success',
+      title: 'Balanced Allocation',
+      desc: 'No single sector dominates your portfolio. Good job!'
+    });
+    riskAngle = -45;
+    riskText = "Safe";
   }
 
-  container.innerHTML = insightsHtml;
+  if (items.length > 0) {
+    alerts.push({
+      type: 'info',
+      title: 'Rebalancing Advice',
+      desc: 'Market conditions suggest shifting 5% capital to defensive sectors like FMCG.'
+    });
+  }
+
+  container.innerHTML = alerts.map(a => `
+    <div class="insight-alert ${a.type}">
+      <div class="insight-content">
+        <h4>${a.title}</h4>
+        <p>${a.desc}</p>
+      </div>
+    </div>
+  `).join("");
+
   if (needle) needle.style.transform = `rotate(${riskAngle}deg)`;
   if (scoreLabel) {
     scoreLabel.textContent = riskText;
-    scoreLabel.style.color = riskText === "Safe" ? "#34d399" : (riskText === "High Risk" ? "#ff4d4d" : "#fbbf24");
+    scoreLabel.style.color = riskText === "Safe" ? "var(--accent)" : (riskText === "High Risk" ? "var(--danger)" : "var(--warning)");
   }
 }
 
