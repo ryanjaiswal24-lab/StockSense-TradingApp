@@ -2,6 +2,7 @@ import json
 import os
 import time
 import warnings
+import sys
 from datetime import datetime, timezone
 
 import firebase_admin
@@ -482,10 +483,11 @@ def main():
     cycle_count = 0
     while True:
         try:
-            run_cycle()
             if cycle_count % 30 == 0:
                 train_and_push_model()
+            run_cycle()
             cycle_count += 1
+            sys.stdout.flush()
         except Exception as error:  # pragma: no cover
             print(f"Cycle failed: {error}")
         time.sleep(POLL_INTERVAL)
