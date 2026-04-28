@@ -1,5 +1,6 @@
 [build]
   publish = "frontend"
+  command = "echo 'Building StockSense frontend'"
 
 [[redirects]]
   from = "/*"
