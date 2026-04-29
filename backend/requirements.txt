@@ -3,3 +3,6 @@ firebase-admin
 newsapi-python
 scikit-learn
 pandas
+pandas_ta
+textblob
+requests

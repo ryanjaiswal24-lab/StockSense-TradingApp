@@ -1,3 +1,4 @@
+console.log("StockSense App Loading...");
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
 import {
@@ -14,7 +15,10 @@ import {
   GoogleAuthProvider,
   onAuthStateChanged,
   signInWithPopup,
-  signOut
+  signOut,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 // Replace these placeholders with your real Firebase project values.
@@ -98,25 +102,223 @@ const sectorGrid = document.getElementById("sector-grid");
 const statGainers = document.getElementById("stat-gainers");
 const statLosers = document.getElementById("stat-losers");
 const statAvg = document.getElementById("stat-avg");
+const btnChatToggle = document.getElementById("btn-chat-toggle");
+const chatWindow = document.getElementById("chatWindow");
+const btnCloseChat = document.getElementById("btnCloseChat");
+const chatInput = document.getElementById("chatInput");
+const btnSendChat = document.getElementById("btnSendChat");
+const chatMessages = document.getElementById("chatMessages");
+
+btnChatToggle?.addEventListener("click", () => chatWindow?.classList.toggle("hidden"));
+btnCloseChat?.addEventListener("click", () => chatWindow?.classList.add("hidden"));
+
+btnSendChat?.addEventListener("click", handleChat);
+chatInput?.addEventListener("keypress", (e) => { if(e.key === 'Enter') handleChat(); });
+
+function addChatMessage(role, text) {
+  const div = document.createElement("div");
+  div.className = `msg ${role}`;
+  div.style.cssText = role === 'bot' 
+    ? "background: var(--panel-strong); padding: 8px 12px; border-radius: 12px 12px 12px 0; max-width: 85%; align-self: flex-start; font-size: 0.9rem;"
+    : "background: var(--accent); color: #04100a; padding: 8px 12px; border-radius: 12px 12px 0 12px; max-width: 85%; align-self: flex-end; font-size: 0.9rem; font-weight: 600;";
+  div.textContent = text;
+  chatMessages?.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function handleChat() {
+  const text = chatInput.value.trim();
+  if(!text) return;
+  chatInput.value = "";
+  addChatMessage("user", text);
+
+  setTimeout(() => {
+    const response = getAIResponse(text.toLowerCase());
+    addChatMessage("bot", response);
+  }, 600);
+}
+
+function getAIResponse(query) {
+  const stocks = Object.values(state.livePrices);
+  const portfolio = Object.values(state.portfolio || {});
+  
+  // 1. Hyper-Detailed Portfolio Deep Dive
+  if (query.includes("analyze my portfolio") || query.includes("portfolio health") || query.includes("deep dive")) {
+    if (portfolio.length === 0) return "Your portfolio is empty. Add stocks to unlock deep AI insights!";
+    
+    let totalInvested = 0, totalCurrent = 0, gainers = 0, losers = 0;
+    const sectors = {};
+    let weakestStock = null;
+    let worstPnl = 0;
+
+    portfolio.forEach(p => {
+      const live = state.livePrices[p.ticker.replace(".","_")] || {price: p.buyPrice};
+      const invested = Number(p.qty) * Number(p.buyPrice);
+      const current = Number(p.qty) * Number(live.price);
+      const pnl = current - invested;
+      
+      totalInvested += invested;
+      totalCurrent += current;
+      if(pnl > 0) gainers++; else losers++;
+      
+      if(pnl < worstPnl) { worstPnl = pnl; weakestStock = p.ticker; }
+      
+      const sec = p.sector || "Other";
+      sectors[sec] = (sectors[sec] || 0) + current;
+    });
+
+    const pnlTotal = totalCurrent - totalInvested;
+    const pnlPct = (pnlTotal / totalInvested) * 100;
+    const diversificationScore = Math.min(10, Object.keys(sectors).length * 2);
+    
+    let report = `📊 DEEP DIVE ANALYSIS:\n`;
+    report += `• Returns: ${formatCurrency(pnlTotal)} (${pnlPct.toFixed(2)}%)\n`;
+    report += `• Risk Profile: ${gainers} Gainers vs ${losers} Losers. `;
+    report += (gainers > losers) ? "Strong momentum! " : "Portfolio is currently under pressure. ";
+    report += `\n• Diversification Score: ${diversificationScore}/10. `;
+    
+    if (diversificationScore < 6) report += "Caution: You are too concentrated in a few sectors. Spread into 3+ sectors to reduce risk. ";
+    
+    if (weakestStock) {
+      report += `\n• Weakest Link: ${weakestStock} is your biggest drag. Consider if the fundamental reason for holding still exists.`;
+    }
+
+    report += `\n\n💡 RECOMMENDATION: `;
+    if (pnlPct > 5) report += "To make this better, use 'Trailing Stop Losses' of 5% on your gainers to protect these profits while allowing more upside.";
+    else report += "To improve profitability, exit stocks with AI scores < 0.4 and re-allocate to 'Bullish' sector leaders.";
+    
+    return report;
+  }
+
+  // 2. Profitability Strategy
+  if (query.includes("profitable") || query.includes("strategy") || query.includes("make money")) {
+    return "To maximize profitability with StockSense: \n1. Focus on 'Value Gems': Stocks with AI Scores > 0.70 AND P/E Ratios under 25. \n2. Sector Rotation: When the 'Average Move' on your dashboard is negative, move into defensive sectors like IT or Pharma. \n3. Risk Management: Never allocate more than 15% of your capital to a single stock.";
+  }
+
+  // 3. Valuation & AI Picks (Existing)
+  if(query.includes("valuation") || query.includes("pe ratio") || query.includes("p/e")) {
+    const cheap = stocks.filter(s => s.pe > 0 && s.pe < 25).slice(0, 3);
+    if(cheap.length > 0) {
+      return `Based on live valuations, ${cheap.map(s => s.ticker).join(", ")} are currently trading at a P/E below 25. This could indicate under-valuation.`;
+    }
+    return "Most stocks are currently trading at fair market valuations.";
+  }
+
+  if(query.includes("best") || query.includes("buy") || query.includes("suggest")) {
+    const top = Object.values(state.aiPicks || {}).sort((a,b) => b.ml - a.ml).slice(0, 2);
+    if(top.length > 0) {
+      return `My models highlight ${top.map(s => s.ticker).join(" and ")} as top technical picks.`;
+    }
+  }
+
+  const tickerMatch = stocks.find(s => query.includes(s.ticker.toLowerCase().split(".")[0]));
+  if(tickerMatch) {
+    const ml = state.aiPicks[tickerMatch.ticker.replace(".","_")]?.ml || "Neutral";
+    return `${tickerMatch.ticker} is at ${formatCurrency(tickerMatch.price)}. P/E: ${tickerMatch.pe || 'N/A'}. Trend: ${ml >= 0.7 ? 'Strongly Bullish' : (ml >= 0.55 ? 'Bullish' : 'Neutral')}.`;
+  }
+
+  return "I can analyze your 'portfolio health', suggest 'profitable strategies', or check stock valuations. What can I help with?";
+}
+
 
 loginBtn?.addEventListener("click", async () => {
   if (authStatus) authStatus.textContent = "Opening Google sign-in...";
   try {
     await signInWithPopup(auth, provider);
   } catch (error) {
-    if (authStatus) authStatus.textContent = error.message;
+    let msg = error.message;
+    if (error.code === 'auth/operation-not-allowed') {
+      msg = "Google login not enabled. Go to Firebase Console > Auth > Sign-in method and enable Google.";
+    } else if (error.code === 'auth/unauthorized-domain') {
+      msg = "Domain not authorized. Add your current URL to Firebase Console > Auth > Settings > Authorized Domains.";
+    }
+    if (authStatus) authStatus.textContent = msg;
     console.error("Login error:", error);
   }
 });
 
 gateLoginBtn?.addEventListener("click", async () => {
+  console.log("Google Login Clicked");
   const gateAuthStatus = document.getElementById("gateAuthStatus");
   if (gateAuthStatus) gateAuthStatus.textContent = "Opening Google sign-in...";
   try {
     await signInWithPopup(auth, provider);
   } catch (error) {
-    if (gateAuthStatus) gateAuthStatus.textContent = "Error: " + error.message;
+    let msg = error.message;
+    if (error.code === 'auth/operation-not-allowed') {
+      msg = "Google login not enabled. Enable it in Firebase Console.";
+    } else if (error.code === 'auth/unauthorized-domain') {
+      msg = "Domain not authorized. Add this domain in Firebase Console settings.";
+    } else if (error.code === 'auth/popup-blocked') {
+      msg = "Popup blocked! Please allow popups for this site or try Email login.";
+    }
+    if (gateAuthStatus) gateAuthStatus.textContent = "Error: " + msg;
     console.error("Login error:", error);
+  }
+});
+
+// Form Toggles
+const loginForm = document.getElementById("loginForm");
+const signupForm = document.getElementById("signupForm");
+const showSignup = document.getElementById("showSignup");
+const showLogin = document.getElementById("showLogin");
+
+showSignup?.addEventListener("click", (e) => {
+  e.preventDefault();
+  loginForm?.classList.add("hidden");
+  signupForm?.classList.remove("hidden");
+});
+
+showLogin?.addEventListener("click", (e) => {
+  e.preventDefault();
+  signupForm?.classList.add("hidden");
+  loginForm?.classList.remove("hidden");
+});
+
+// Email Login
+const emailLoginBtn = document.getElementById("emailLoginBtn");
+emailLoginBtn?.addEventListener("click", async () => {
+  const email = document.getElementById("loginEmail").value;
+  const pass = document.getElementById("loginPassword").value;
+  const gateAuthStatus = document.getElementById("gateAuthStatus");
+
+  if (!email || !pass) {
+    if (gateAuthStatus) gateAuthStatus.textContent = "Please enter email and password.";
+    return;
+  }
+
+  if (gateAuthStatus) gateAuthStatus.textContent = "Signing in...";
+  try {
+    await signInWithEmailAndPassword(auth, email, pass);
+  } catch (error) {
+    if (gateAuthStatus) gateAuthStatus.textContent = "Error: " + error.message;
+    console.error("Email login error:", error);
+  }
+});
+
+// Email Signup
+const emailSignupBtn = document.getElementById("emailSignupBtn");
+emailSignupBtn?.addEventListener("click", async () => {
+  const name = document.getElementById("signupName").value;
+  const email = document.getElementById("signupEmail").value;
+  const pass = document.getElementById("signupPassword").value;
+  const gateAuthStatus = document.getElementById("gateAuthStatus");
+
+  if (!name || !email || !pass) {
+    if (gateAuthStatus) gateAuthStatus.textContent = "All fields are required.";
+    return;
+  }
+
+  if (gateAuthStatus) gateAuthStatus.textContent = "Creating account...";
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+    await updateProfile(userCredential.user, { displayName: name });
+    // updateProfile doesn't trigger onAuthStateChanged with the new name immediately in some versions, 
+    // but upsertUser will catch the email/uid.
+    await upsertUser(userCredential.user);
+  } catch (error) {
+    if (gateAuthStatus) gateAuthStatus.textContent = "Error: " + error.message;
+    console.error("Email signup error:", error);
   }
 });
 
@@ -423,12 +625,25 @@ function startListeners() {
     onValue(ref(db, `users/${state.user.uid}/profile`), (snapshot) => {
       state.profile = snapshot.val() || {};
       if (state.profile.availableBalance === undefined) {
-        state.profile.availableBalance = 100000; // Default mock balance
-        update(ref(db, `users/${state.user.uid}/profile`), { availableBalance: 100000 });
+        state.profile.availableBalance = 1000000000; // Unlimited Mode
+        update(ref(db, `users/${state.user.uid}/profile`), { availableBalance: 1000000000 });
       }
       renderAvailableBalance();
     });
   }
+
+  // New High-Frequency Listeners
+  onValue(ref(db, "market_breadth"), (snapshot) => {
+    const breadth = snapshot.val() || { gainers: 0, losers: 0 };
+    if (statGainers) statGainers.textContent = breadth.gainers;
+    if (statLosers) statLosers.textContent = breadth.losers;
+  });
+
+  onValue(ref(db, "market_sentiment"), (snapshot) => {
+    const sent = snapshot.val() || { sentiment: "Neutral" };
+    const summary = document.getElementById("marketSummary");
+    if (summary) summary.textContent = `Sense: ${sent.sentiment} | Nifty: ${sent.change_pct?.toFixed(2) || 0}%`;
+  });
 }
 
 async function upsertUser(user) {
@@ -551,44 +766,7 @@ function renderAvailableBalance() {
   }
 }
 
-function renderSidebar() {
-  const gDiv = document.getElementById("top-gainers");
-  const lDiv = document.getElementById("top-losers");
-  if (!gDiv || !lDiv) return;
 
-  const sorted = Object.values(state.livePrices).sort((a, b) => b.change_pct - a.change_pct);
-  const gainers = sorted.slice(0, 5);
-  const losers = sorted.slice(-5).reverse();
-
-  const mapList = (list, cls) => {
-    return list.map(s => `
-      <div class="sidebar-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-        <div style="display: flex; flex-direction: column;">
-          <span style="font-weight: 800; font-size: 0.9rem;">${s.ticker}</span>
-          <span class="muted" style="font-size: 0.7rem;">${formatCurrency(s.price)}</span>
-        </div>
-        <div class="${cls}" style="font-weight: 800; font-size: 0.9rem; padding: 4px 8px; background: ${cls === 'positive' ? 'rgba(0,255,163,0.1)' : 'rgba(255,77,77,0.1)'}; border-radius: 6px;">
-          ${s.change_pct >= 0 ? '+' : ''}${s.change_pct.toFixed(2)}%
-        </div>
-      </div>
-    `).join("");
-  };
-
-  gDiv.innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-      <h3 style="margin:0; font-size: 1rem;">Top Gainers</h3>
-      <span class="muted" style="font-size: 0.7rem; cursor: pointer;">View All →</span>
-    </div>
-    ${mapList(gainers, "positive")}
-  `;
-  lDiv.innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-      <h3 style="margin:0; font-size: 1rem;">Top Losers</h3>
-      <span class="muted" style="font-size: 0.7rem; cursor: pointer;">View All →</span>
-    </div>
-    ${mapList(losers, "negative")}
-  `;
-}
 
 function renderTransactions() {
   const container = document.getElementById("transactions-container-v2");
@@ -768,7 +946,21 @@ function renderAdvancedAIInsights(portfolio) {
 
   const sectors = Object.keys(sectorMap);
   const healthScore = Math.min(10, Math.max(1, Math.floor(sectors.length * 1.5 + (items.length > 5 ? 2 : 0))));
+  
+  // New: Average P/E of portfolio
+  let totalPE = 0, peCount = 0;
+  items.forEach(it => {
+    const live = state.livePrices[it.ticker.replace(".", "_")];
+    if(live?.pe) { totalPE += live.pe; peCount++; }
+  });
+  const avgPE = peCount > 0 ? (totalPE / peCount).toFixed(1) : "N/A";
+
   if (divScore) divScore.textContent = `${healthScore}/10`;
+  
+  // Update UI to show Valuation Insight
+  const valuationNote = document.getElementById("valuation-summary");
+  if(valuationNote) valuationNote.textContent = `Avg P/E: ${avgPE} | Stocks: ${items.length}`;
+
 
   let riskAngle = 45;
   let riskText = "Moderate";
@@ -1000,16 +1192,35 @@ function renderLive(stocks) {
             </div>
             <div class="scrip-detail-section">
               <h5 class="eyebrow" style="margin: 0 0 8px 0; color: var(--accent);">AI Insights</h5>
-              <div class="scrip-stat"><span class="muted">AI Score:</span> <strong>${aiScore}</strong></div>
-              <div class="scrip-stat"><span class="muted">Signal:</span> <strong style="color: var(--accent);">${signals}</strong></div>
-              <div class="scrip-stat"><span class="muted">Sector:</span> <strong>${stock.sector || "N/A"}</strong></div>
-            </div>
-              <div class="scrip-actions" style="width: 100%; margin-top: 12px; display: flex; justify-content: flex-end; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding-top: 12px;">
-                <button class="btn btn-ghost btn-sm" onclick="window.open('https://finance.yahoo.com/quote/${stock.ticker}', '_blank')">📈 Chart</button>
-                <button class="btn btn-ghost btn-sm" onclick="window.toggleWatchlist('${stock.ticker}')">${state.watchlist[safeTicker] ? '⭐ Remove' : '☆ Watchlist'}</button>
-                <button class="btn btn-ghost btn-sm" id="btn-train-${safeTicker}" onclick="window.requestAITrain('${stock.ticker}')">Train AI</button>
-                <button class="btn btn-primary btn-sm" onclick="window.quickAddToPortfolio('${stock.ticker}', ${stock.price})">+ Track in Portfolio</button>
+          <div class="scrip-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin-top: 16px; padding: 16px; background: rgba(255,255,255,0.02); border-radius: 12px;">
+            <div class="detail-item">
+              <span class="muted" style="font-size: 0.7rem; display: block; margin-bottom: 4px;">52W High / Low</span>
+              <div style="font-weight: 700; font-size: 0.9rem;">
+                <span class="positive">${formatCurrency(stock.h52 || 0)}</span> / <span class="negative">${formatCurrency(stock.l52 || 0)}</span>
               </div>
+            </div>
+            <div class="detail-item">
+              <span class="muted" style="font-size: 0.7rem; display: block; margin-bottom: 4px;">Support / Resistance</span>
+              <div style="font-weight: 700; font-size: 0.9rem;">
+                <span class="positive">${formatCurrency(stock.sup || 0)}</span> / <span class="negative">${formatCurrency(stock.res || 0)}</span>
+              </div>
+            </div>
+            <div class="detail-item">
+              <span class="muted" style="font-size: 0.7rem; display: block; margin-bottom: 4px;">Today's H / L</span>
+              <div style="font-weight: 700; font-size: 0.9rem;">
+                ${formatCurrency(stock.high || 0)} / ${formatCurrency(stock.low || 0)}
+              </div>
+            </div>
+            <div class="detail-item">
+              <span class="muted" style="font-size: 0.7rem; display: block; margin-bottom: 4px;">AI Confidence</span>
+              <div style="font-weight: 700; font-size: 0.9rem; color: var(--accent);">${aiScore}</div>
+            </div>
+          </div>
+          <div style="margin-top: 16px; display: flex; gap: 10px;">
+            <button class="btn btn-primary" onclick="window.openTxModal('buy', '${stock.ticker}')" style="flex: 1; border-radius: 10px; height: 40px; font-weight: 700;">Buy ${stock.ticker}</button>
+            <button class="btn btn-ghost" onclick="window.toggleWatchlist('${stock.ticker}')" style="border-radius: 10px; height: 40px; width: 48px; display: grid; place-items: center;">
+              ${state.watchlist[safeTicker] ? '★' : '☆'}
+            </button>
           </div>
         </details>
       `;
@@ -1073,7 +1284,9 @@ function renderNews() {
           <summary class="news-summary">
             <h4>${item.title || "Untitled story"}</h4>
             <div class="news-meta">
-              <span>${item.source || "Yahoo Finance"}</span>
+              <span class="news-category-tag" style="background: rgba(0, 255, 163, 0.1); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; margin-right: 8px;">${item.category || "General"}</span>
+              <span class="sentiment-tag" style="background: ${item.sentiment === 'Bullish' ? 'rgba(0, 255, 163, 0.1)' : (item.sentiment === 'Bearish' ? 'rgba(255, 71, 87, 0.1)' : 'rgba(255,255,255,0.05)')}; color: ${item.sentiment === 'Bullish' ? 'var(--accent)' : (item.sentiment === 'Bearish' ? 'var(--danger)' : 'var(--muted)')}; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; margin-right: 8px;">${item.sentiment || "Neutral"}</span>
+              <span>${item.source || "Finance Hub"}</span>
               <span>•</span>
               <span>${formatTimestamp(item.updated_at)}</span>
             </div>
@@ -1104,46 +1317,41 @@ function renderNews() {
 
 function renderAIPicks() {
   if (!aiGrid) return;
-  let picks = Object.values(state.aiPicks);
+  const picks = Object.values(state.aiPicks || {});
   
   if (!picks.length) {
-    // Fallback: Show Top Gainers as "Trending Now" if AI picks are not ready
-    const stocks = Object.keys(state.stocks).map(ticker => ({
-      ticker,
-      ...state.stocks[ticker],
-      ...(state.livePrices[ticker.replace(".", "_")] || {})
-    }));
-    
-    if (stocks.length > 0) {
-      picks = stocks
-        .sort((a, b) => (b.change_pct || 0) - (a.change_pct || 0))
-        .slice(0, 10)
-        .map(s => ({
-          ...s,
-          isTrending: true
-        }));
-    } else {
-      aiGrid.innerHTML = emptyState("AI Model is currently analyzing the market. Check back soon.");
-      return;
-    }
+    aiGrid.innerHTML = emptyState("AI Model is analyzing the market. Results appearing soon.");
+    return;
   }
 
   aiGrid.innerHTML = picks
+    .sort((a, b) => b.score - a.score)
     .map((stock) => {
-      const signal = stock.isTrending ? "Trending" : (Array.isArray(stock.signals) ? stock.signals.join(", ") : "Bullish");
-      const scoreLabel = stock.isTrending ? "Change" : "AI Score";
-      const scoreValue = stock.isTrending ? `${(stock.change_pct || 0).toFixed(2)}%` : formatScore(stock.ml);
-      const colorCls = (stock.change_pct || 0) >= 0 ? "positive" : "negative";
+      const labelCls = (stock.label || "").toLowerCase().replace(" ", "-");
+      const score = stock.score || 0;
+      const reasons = Array.isArray(stock.reasons) ? stock.reasons.map(r => `<span class="sig sig-b">${r}</span>`).join("") : "";
 
       return `
         <article class="price-card" style="border-left: 4px solid var(--accent); cursor: pointer;" onclick="window.jumpToStock('${stock.ticker}')">
-          <p class="eyebrow">${stock.isTrending ? "🔥 Trending Now" : "🤖 AI Suggestion"}</p>
-          <h4 style="margin-top: 4px;">${stock.ticker}</h4>
-          <p class="price-value ${colorCls}">${formatCurrency(stock.price)}</p>
-          <div class="price-row"><span>Sector</span><span>${stock.sector || "N/A"}</span></div>
-          <div class="price-row"><span>Signal</span><span style="color: var(--accent); font-weight: bold;">${signal}</span></div>
-          <div class="price-row"><span>${scoreLabel}</span><span class="${colorCls}">${scoreValue}</span></div>
-          <div style="margin-top: 12px; font-size: 0.8rem; color: var(--accent); text-align: right;">View Details →</div>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <p class="eyebrow">🤖 AI Intelligence</p>
+            <span class="ai-label ${labelCls}">${stock.label || "Neutral"}</span>
+          </div>
+          <h4 style="margin-top: 8px;">${stock.ticker}</h4>
+          <div style="margin: 12px 0;">
+            <div style="font-size: 0.75rem; color: var(--muted); margin-bottom: 4px;">Composite Score</div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="flex: 1; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden;">
+                <div style="width: ${score}%; height: 100%; background: var(--accent); box-shadow: 0 0 10px var(--accent);"></div>
+              </div>
+              <span style="font-size: 1.2rem; font-weight: 900; color: var(--accent);">${score}</span>
+            </div>
+          </div>
+          <div class="pc-sigs" style="margin-top: 8px;">${reasons}</div>
+          <div style="margin-top: 16px; font-size: 0.75rem; color: var(--muted); display: flex; justify-content: space-between;">
+            <span>Confidence: ${stock.confidence}%</span>
+            <span style="color: var(--accent);">Analysis Details →</span>
+          </div>
         </article>
       `;
     })
@@ -1255,95 +1463,7 @@ async function saveUserPreference(path, value) {
 
 window.saveUserPreference = saveUserPreference;
 
-// Chat logic
-const chatToggle = document.getElementById("btn-chat-toggle");
-const chatClose = document.getElementById("btn-chat-close");
-const chatWindow = document.getElementById("ai-chat-window");
-const chatInput = document.getElementById("chat-input");
-const chatSend = document.getElementById("btn-chat-send");
-const chatMessages = document.getElementById("chat-messages");
 
-if (chatToggle && chatClose && chatWindow) {
-  chatToggle.addEventListener("click", () => {
-    chatWindow.classList.remove("hidden");
-    chatToggle.style.display = "none";
-    chatInput.focus();
-  });
-  chatClose.addEventListener("click", () => {
-    chatWindow.classList.add("hidden");
-    chatToggle.style.display = "flex";
-  });
-}
-
-function addChatMessage(sender, text) {
-  if (!chatMessages) return;
-  const div = document.createElement("div");
-  div.style.padding = "8px 12px";
-  div.style.borderRadius = "8px";
-  div.style.maxWidth = "85%";
-  div.style.wordWrap = "break-word";
-  
-  if (sender === "user") {
-    div.style.alignSelf = "flex-end";
-    div.style.background = "var(--accent)";
-    div.style.color = "#fff";
-  } else {
-    div.style.alignSelf = "flex-start";
-    div.style.background = "var(--bg)";
-    div.style.border = "1px solid var(--line)";
-    div.style.color = "var(--text)";
-  }
-  div.textContent = text;
-  chatMessages.appendChild(div);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-function processChatCommand(msg) {
-  const text = msg.toLowerCase();
-  
-  if (text.includes("portfolio")) {
-    if (!state.user || !state.portfolio) return "Please log in and ensure your portfolio is loaded.";
-    const items = Object.values(state.portfolio);
-    if (items.length === 0) return "Your portfolio is currently empty.";
-    const totalVal = items.reduce((acc, item) => acc + (Number(item.qty)*Number(item.buyPrice)), 0);
-    return `You have ${items.length} stocks in your portfolio. Your invested value is roughly ${formatCurrency(totalVal)}. Check the Portfolio tab for live P&L updates!`;
-  }
-  
-  if (text.includes("top") || text.includes("pick") || text.includes("buy")) {
-    const picks = Object.values(state.aiPicks || {});
-    if (picks.length === 0) return "The AI is currently analyzing the market. No picks yet.";
-    const top3 = picks.sort((a,b)=> (b.ml||0) - (a.ml||0)).slice(0, 3).map(p => `${p.ticker} (Score: ${formatScore(p.ml)})`).join(", ");
-    return `The strongest buy signals right now are: ${top3}`;
-  }
-  
-  if (text.includes("sector") || text.includes("crashing")) {
-    return "Check the Sector Heatmap on the right sidebar to see which sectors are doing the best or worst today!";
-  }
-  
-  if (text.includes("hello") || text.includes("hi")) {
-    return "Hello! I am your StockSense AI. I can tell you about the top AI picks or your portfolio. What do you want to know?";
-  }
-  
-  return "I'm a simple local AI bot. Try asking me for 'top picks' or about your 'portfolio'.";
-}
-
-if (chatSend && chatInput) {
-  chatSend.addEventListener("click", () => {
-    const text = chatInput.value.trim();
-    if (!text) return;
-    addChatMessage("user", text);
-    chatInput.value = "";
-    
-    setTimeout(() => {
-      const response = processChatCommand(text);
-      addChatMessage("bot", response);
-    }, 500);
-  });
-  
-  chatInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") chatSend.click();
-  });
-}
 
 // Quick add to portfolio (tracked holding without quantity)
 window.quickAddToPortfolio = async function(ticker, currentPrice) {
@@ -1503,4 +1623,139 @@ window.filterLive = function(type) {
   setTimeout(() => {
     document.getElementById("section-live")?.scrollIntoView({ behavior: 'smooth' });
   }, 100);
-};
+};
+
+window.generateAIReport = function() {
+  try {
+    console.log("🏥 AI Portfolio Doctor Activated");
+    const portfolio = Object.values(state.portfolio || {});
+    const panel = document.getElementById("portfolio-doctor-panel");
+    const scoreEl = document.getElementById("health-score-value");
+    const metricsGrid = document.getElementById("doctor-metrics-grid");
+    const diagnosisEl = document.getElementById("doctor-diagnosis");
+    const prescriptionEl = document.getElementById("doctor-prescription");
+    const alertsEl = document.getElementById("doctor-alerts");
+
+    if (!panel) {
+      console.error("Doctor panel not found");
+      return;
+    }
+
+    if (portfolio.length === 0) {
+      alert("Please add stocks to your portfolio first.");
+      return;
+    }
+
+    panel.classList.remove("hidden");
+    panel.style.display = "block";
+    
+    // 1. Core Calculations
+    let totalInvested = 0, totalCurrent = 0, winners = 0;
+    const sectors = {};
+    let leader = { ticker: 'N/A', gain: -Infinity };
+    let laggard = { ticker: 'N/A', gain: Infinity };
+
+    portfolio.forEach(p => {
+      try {
+        const live = state.livePrices[p.ticker.replace(".","_")] || {price: p.buyPrice};
+        const invested = Number(p.qty) * Number(p.buyPrice);
+        const current = Number(p.qty) * Number(live.price);
+        const pnl = current - invested;
+        const pnlPct = invested > 0 ? (pnl / invested) * 100 : 0;
+
+        totalInvested += invested;
+        totalCurrent += current;
+        if (pnl > 0) winners++;
+        
+        if (pnlPct > leader.gain) leader = { ticker: p.ticker, gain: pnlPct };
+        if (pnlPct < laggard.gain) laggard = { ticker: p.ticker, gain: pnlPct };
+
+        const sec = p.sector || "Other";
+        sectors[sec] = (sectors[sec] || 0) + current;
+      } catch (e) { console.warn("Error processing stock:", p.ticker, e); }
+    });
+
+    if (totalInvested === 0) {
+      alert("Portfolio valuation error. Please check your holdings.");
+      return;
+    }
+
+    const overallPnlPct = ((totalCurrent - totalInvested) / totalInvested) * 100;
+    
+    // 2. Intelligence Logic
+    const sectorKeys = Object.keys(sectors);
+    const diversification = sectorKeys.length;
+    const topSector = sectorKeys.length > 0 ? sectorKeys[0] : "None";
+    const healthScore = Math.round(
+      Math.min(100, (winners / portfolio.length * 40) + (Math.min(5, diversification) * 10) + (overallPnlPct > 0 ? 10 : 0) + (portfolio.length > 3 ? 10 : 0))
+    );
+
+    // 3. UI Updates
+    if (scoreEl) {
+      scoreEl.textContent = healthScore;
+      scoreEl.style.color = healthScore > 70 ? '#00ffa3' : (healthScore > 40 ? '#fbbf24' : '#ef4444');
+    }
+
+    if (metricsGrid) {
+      metricsGrid.innerHTML = `
+        <div class="stat-item" style="background: rgba(255,255,255,0.01); padding: 12px; border-radius: 8px;">
+          <span class="muted" style="font-size: 0.7rem;">Market Leader</span>
+          <div style="font-weight: 700; color: #00ffa3;">${leader.ticker} (${leader.gain > -Infinity ? '+' + leader.gain.toFixed(1) + '%' : '0%'})</div>
+        </div>
+        <div class="stat-item" style="background: rgba(255,255,255,0.01); padding: 12px; border-radius: 8px;">
+          <span class="muted" style="font-size: 0.7rem;">Risk Factor</span>
+          <div style="font-weight: 700; color: ${diversification < 3 ? '#ef4444' : '#34d399'};">${diversification < 3 ? 'High' : 'Low'}</div>
+        </div>
+        <div class="stat-item" style="background: rgba(255,255,255,0.01); padding: 12px; border-radius: 8px;">
+          <span class="muted" style="font-size: 0.7rem;">Sector Focus</span>
+          <div style="font-weight: 700;">${topSector} (${((sectors[topSector] / totalCurrent) * 100).toFixed(0)}%)</div>
+        </div>
+      `;
+    }
+
+    if (diagnosisEl) {
+      diagnosisEl.innerHTML = `
+        • Your portfolio health score is <strong>${healthScore}/100</strong>. <br>
+        • <strong>Sector Bias:</strong> You are heavily weighted in ${topSector}. Any industry-specific correction will impact you significantly. <br>
+        • <strong>The Drag:</strong> ${laggard.ticker} is currently your weakest holding with a ${laggard.gain < Infinity ? laggard.gain.toFixed(1) : '0'}% drawdown.
+      `;
+    }
+
+    if (prescriptionEl) {
+      prescriptionEl.innerHTML = `
+        • <strong>Rebalance Suggestion:</strong> Trim 10% from ${leader.ticker !== 'N/A' ? leader.ticker : 'leaders'} to book profits and re-allocate into a defensive sector. <br>
+        • <strong>Exit Strategy:</strong> Set a strict stop-loss for ${laggard.ticker !== 'N/A' ? laggard.ticker : 'laggards'} to prevent further capital erosion. <br>
+        • <strong>Next Move:</strong> Look for stocks with high AI scores to improve your win rate.
+      `;
+    }
+
+    if (alertsEl) {
+      alertsEl.innerHTML = overallPnlPct > 10 
+        ? `<div style="background: rgba(0, 255, 163, 0.1); color: #00ffa3; padding: 10px; border-radius: 8px; font-size: 0.8rem; border: 1px solid #00ffa3;">🚀 <strong>Profit Booking Opportunity:</strong> Your portfolio is up ${overallPnlPct.toFixed(1)}%. Consider taking some gains.</div>`
+        : `<div style="background: rgba(239, 68, 68, 0.1); color: #ef4444; padding: 10px; border-radius: 8px; font-size: 0.8rem; border: 1px solid #ef4444;">⚠️ <strong>Risk Alert:</strong> Diversification is low. Add more sectors to reach an "Optimal" rating.</div>`;
+    }
+
+    panel.scrollIntoView({ behavior: 'smooth' });
+  } catch (err) {
+    console.error("AI Doctor failed:", err);
+    alert("Financial intelligence engine encountered an error. Please try again.");
+  }
+};
+
+// Auto-bind to ensure click works even if onclick in HTML is blocked
+document.addEventListener("DOMContentLoaded", () => {
+  setTimeout(() => {
+    const btn = document.querySelector('button[onclick*="generateAIReport"]');
+    if (btn) {
+      btn.onclick = null; // Remove inline
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        window.generateAIReport();
+      });
+      console.log("✅ AI Smart Report Button Bound");
+    }
+  }, 1000);
+});
+
+console.log("🚀 StockSense App Engine Loaded Successfully");
+
