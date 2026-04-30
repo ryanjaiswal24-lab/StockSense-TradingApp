@@ -77,11 +77,11 @@
         <h1>StockSense</h1>
       </div>
       <nav class="nav-pills">
-        <a href="#section-news" class="nav-pill" data-tab="news">News</a>
-        <a href="#section-ai" class="nav-pill" data-tab="ai">AI Picks</a>
-        <a href="#section-live" class="nav-pill active" data-tab="live">Live</a>
-        <a href="#section-portfolio" class="nav-pill" data-tab="portfolio">Portfolio</a>
-        <a href="#section-profile" class="nav-pill" data-tab="profile">Profile</a>
+        <a href="#section-news" class="nav-pill" data-tab="news" data-i18n="nav_news">News</a>
+        <a href="#section-ai" class="nav-pill" data-tab="ai" data-i18n="nav_ai">AI Picks</a>
+        <a href="#section-live" class="nav-pill active" data-tab="live" data-i18n="nav_live">Live</a>
+        <a href="#section-portfolio" class="nav-pill" data-tab="portfolio" data-i18n="nav_portfolio">Portfolio</a>
+        <a href="#section-profile" class="nav-pill" data-tab="profile" data-i18n="nav_profile">Profile</a>
       </nav>
       <div class="top-actions">
         <div id="sync-status" class="ctrl-badge" style="gap: 8px; font-weight: 700;">
@@ -104,61 +104,71 @@
 
 
 
-    <section class="hero-strip">
-      <article class="hero-card"><span class="hero-label">Market</span><div id="market-pill" class="market-pill closed"><span id="marketPhase">Waiting...</span></div><p id="marketSummary" class="muted">No market status yet</p></article>
-      <article class="hero-card"><span class="hero-label">Gainers</span><strong id="stat-gainers" class="hstat-val">0</strong></article>
-      <article class="hero-card"><span class="hero-label">Losers</span><strong id="stat-losers" class="hstat-val">0</strong></article>
-      <article class="hero-card"><span class="hero-label">Tracked</span><strong id="trackedCount" class="hstat-val">0</strong></article>
-      <article class="hero-card"><span class="hero-label">Average Move</span><strong id="stat-avg" class="hstat-val">0.00%</strong></article>
-      <article class="hero-card"><span class="hero-label">Last Sync</span><strong id="lastRefresh" class="hstat-val">—</strong></article>
-    </section>
-
     <main class="layout">
       <div class="main-col">
 
 
         <section id="section-ai" class="page-section">
           <div class="section-head">
-            <div><p class="eyebrow">Machine Learning</p><h2>AI Suggestions</h2></div>
+            <div><p class="eyebrow" data-i18n="ai_label">Machine Learning</p><h2 data-i18n="nav_ai">AI Suggestions</h2></div>
           </div>
           <div id="aiGrid" class="picks-grid"></div>
         </section>
 
         <section id="section-live" class="page-section active">
-          <div class="section-head">
-            <div><p class="eyebrow">Realtime</p><h2>Market Overview</h2></div>
-            <div class="section-actions"><input id="live-search" class="input" type="text" placeholder="Filter ticker" /><button id="btn-live-search" class="btn btn-primary" style="margin-left: 8px; margin-right: 8px;">Search</button><span id="live-count" class="ctrl-badge">0 stocks</span></div>
-          </div>
-          <div class="live-grid-top" style="display: grid; grid-template-columns: 1fr 350px; gap: 20px; margin-bottom: 24px;">
-            <div class="side-card" style="padding: 20px;">
-              <p class="eyebrow">Visual Analysis</p>
-              <h3 style="margin-bottom: 16px;">Market Distribution</h3>
-              <div style="height: 200px;"><canvas id="marketChart"></canvas></div>
-            </div>
-            <div class="side-card" style="padding: 20px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <p class="eyebrow" style="margin: 0;">My Watchlist</p>
-                <span id="watchlist-count" class="ctrl-badge">0</span>
+          <div class="live-layout" style="display: flex; gap: 24px; align-items: flex-start;">
+            <!-- Main Column -->
+            <div class="live-main" style="flex: 1; min-width: 0;">
+              <div class="section-head">
+                <div><p class="eyebrow">Realtime</p><h2>Market Overview</h2></div>
+                <div class="section-actions"><input id="live-search" class="input" type="text" placeholder="Filter ticker" /><button id="btn-live-search" class="btn btn-primary" style="margin-left: 8px; margin-right: 8px;">Search</button><span id="live-count" class="ctrl-badge">0 stocks</span></div>
               </div>
-              <div id="watchlist-items" style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto;">
-                <p class="muted" style="font-size: 0.85rem; text-align: center;">No stocks in watchlist.</p>
+              
+              <div class="side-card" style="padding: 20px; margin-bottom: 24px;">
+                <p class="eyebrow">Visual Analysis</p>
+                <h3 style="margin-bottom: 16px;">Market Distribution</h3>
+                <div style="height: 200px;"><canvas id="marketChart"></canvas></div>
+              </div>
+
+              <div class="ticker-wrap" style="margin-top: 0; margin-bottom: 24px;">
+                <div id="ticker-tape" class="ticker-tape"></div>
+              </div>
+
+              <div id="live-tables-container">
+                <!-- Populated by app.js with category tables -->
               </div>
             </div>
-          </div>
 
-          <div class="ticker-wrap" style="margin-top: 0; margin-bottom: 24px;">
-            <div id="ticker-tape" class="ticker-tape"></div>
-          </div>
+            <!-- Sidelined Column -->
+            <aside class="live-sidebar" style="width: 350px; flex-shrink: 0; display: flex; flex-direction: column; gap: 20px;">
+              <div class="side-card" style="padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                  <p class="eyebrow" style="margin: 0;">My Watchlist</p>
+                  <span id="watchlist-count" class="ctrl-badge">0</span>
+                </div>
+                <div id="watchlist-items" style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto;">
+                  <p class="muted" style="font-size: 0.85rem; text-align: center;">No stocks in watchlist.</p>
+                </div>
+              </div>
 
-          <div id="live-tables-container">
-            <!-- Populated by app.js with category tables -->
+              <div class="hero-strip" style="display: flex; flex-direction: column; gap: 10px; width: 100%; padding: 0;">
+                <article class="hero-card" style="width: 100%; border: 1px solid rgba(255,255,255,0.05);"><span class="hero-label">Market</span><div id="market-pill" class="market-pill closed" style="margin-left: 0; margin-top: 8px;"><span id="marketPhase">Waiting...</span></div><p id="marketSummary" class="muted" style="margin-top: 8px;">No market status yet</p></article>
+                <article class="hero-card" style="width: 100%; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;"><span class="hero-label">Gainers</span><strong id="stat-gainers" class="hstat-val">0</strong></article>
+                <article class="hero-card" style="width: 100%; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;"><span class="hero-label">Losers</span><strong id="stat-losers" class="hstat-val">0</strong></article>
+                <article class="hero-card" style="width: 100%; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;"><span class="hero-label">Avg Move</span><strong id="stat-avg" class="hstat-val">0.00%</strong></article>
+              </div>
+
+              <article class="side-card" style="padding: 16px;"><div id="top-gainers"></div></article>
+              <article class="side-card" style="padding: 16px;"><div id="top-losers"></div></article>
+              <article class="side-card"><h3>Sector Heatmap</h3><div id="sector-grid" class="sector-grid"></div></article>
+            </aside>
           </div>
         </section>
 
         <section id="section-news" class="page-section">
           <div class="section-head">
-            <div><p class="eyebrow">Headlines</p><h2>Financial Intelligence</h2></div>
-            <div class="section-actions"><input id="news-input" class="input" type="text" placeholder="Search headline or source" /><button id="btn-news-clear" class="btn btn-ghost">Clear</button></div>
+            <div><p class="eyebrow" data-i18n="headlines_label">Headlines</p><h2 data-i18n="nav_news">Financial Intelligence</h2></div>
+            <div class="section-actions"><input id="news-input" class="input" type="text" placeholder="Search headlines..." /><button id="btn-news-clear" class="btn btn-ghost">Clear</button></div>
           </div>
           <div id="news-categories-bar" style="display: flex; gap: 12px; margin-bottom: 24px; overflow-x: auto; padding-bottom: 8px; border-bottom: 1px solid var(--line);">
             <span class="ctrl-badge active" style="cursor: pointer; background: var(--accent); color: #000;">All Stories</span>
@@ -173,74 +183,81 @@
 
         <section id="section-portfolio" class="page-section">
           <div class="section-head">
-            <div><p class="eyebrow">Wealth Intelligence</p><h2>Investment Dashboard</h2></div>
+            <div><p class="eyebrow" data-i18n="wealth_label">Wealth Intelligence</p><h2 data-i18n="nav_portfolio">Investment Dashboard</h2></div>
             <div class="section-actions" style="display: flex; gap: 10px; position: relative; z-index: 1000;">
               <button class="btn btn-ghost" onclick="console.log('Report Clicked'); window.generateAIReport();" style="border-radius: 12px; font-weight: 700; border: 1px solid var(--accent); color: var(--accent); display: flex; align-items: center; gap: 8px; cursor: pointer; pointer-events: auto;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-                AI Smart Report
+                <span data-i18n="ai_smart_report">AI Smart Report</span>
               </button>
-              <button class="btn btn-primary" onclick="window.openTxModal('buy', '')" style="border-radius: 12px; font-weight: 700;">+ Execute Trade</button>
+              <button class="btn btn-primary" onclick="window.openTxModal('buy', '')" style="border-radius: 12px; font-weight: 700;" data-i18n="execute_trade">+ Execute Trade</button>
             </div>
           </div>
 
           <div class="portfolio-dashboard-grid">
-            <!-- Top Row: Hero Stats & Performance -->
-            <div class="premium-card card-span-4 portfolio-value-hero">
-              <span class="stat-label">Total Portfolio Value</span>
-              <h2 id="pm-current">₹0.00</h2>
-              <div id="pm-pnl-label" class="stat-value positive">+₹0.00 (+0.00%)</div>
-              
-              <!-- AI Portfolio Doctor Dashboard -->
-              <div id="portfolio-doctor-panel" class="hidden" style="margin-top: 24px; padding: 24px; background: linear-gradient(145deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9)); border: 1px solid rgba(0, 255, 163, 0.15); border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); position: relative; overflow: hidden;">
-                <div style="position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: var(--accent); opacity: 0.03; border-radius: 50%; filter: blur(40px);"></div>
-                
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
-                  <div>
-                    <h3 style="color: var(--accent); margin: 0; display: flex; align-items: center; gap: 10px; font-size: 1.25rem;">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
-                      AI Portfolio Doctor
-                    </h3>
-                    <p class="muted" style="font-size: 0.8rem; margin: 4px 0 0 0;">Financial Health & Rebalance Intelligence</p>
-                  </div>
-                  <div id="doctor-health-score" style="text-align: right;">
-                    <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;" class="muted">Health Score</div>
-                    <div id="health-score-value" style="font-size: 2rem; font-weight: 900; color: var(--accent); line-height: 1;">--</div>
-                  </div>
-                </div>
-
-                <div id="doctor-metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px;">
-                  <!-- Dynamic Metrics Loaded via JS -->
-                </div>
-
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
-                  <div class="doctor-card" style="background: rgba(255,255,255,0.02); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
-                    <h5 style="color: var(--accent); margin: 0 0 12px 0; font-size: 0.85rem; text-transform: uppercase;">Diagnosis & Risks</h5>
-                    <div id="doctor-diagnosis" style="font-size: 0.85rem; line-height: 1.6;"></div>
-                  </div>
-                  <div class="doctor-card" style="background: rgba(255,255,255,0.02); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
-                    <h5 style="color: #60a5fa; margin: 0 0 12px 0; font-size: 0.85rem; text-transform: uppercase;">Prescription (Actions)</h5>
-                    <div id="doctor-prescription" style="font-size: 0.85rem; line-height: 1.6;"></div>
-                  </div>
-                </div>
-
-                <div id="doctor-alerts" style="margin-top: 20px; display: flex; flex-direction: column; gap: 8px;"></div>
+            <!-- Portfolio Intelligence Hero (High Hierarchy Design) -->
+            <div class="premium-card card-span-12 portfolio-value-hero">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 24px;">
+                <span class="live-indicator"></span>
+                <span class="text-muted" style="font-size: 0.7rem; letter-spacing: 2px;">LIVE INTELLIGENCE ENGINE</span>
               </div>
-              
-              <div class="stat-grid">
-                <div class="stat-item">
-                  <span class="stat-label">Invested</span>
-                  <span id="pm-invested" class="stat-value">₹0.00</span>
+              <div class="hero-main-stats">
+                <div>
+                  <div class="text-muted" style="margin-bottom: 12px;" data-i18n="portfolio_value">Net Portfolio Value</div>
+                  <h2 id="pm-current">₹0.00</h2>
+                  <div id="pm-pnl-label" class="hero-pnl" style="color: var(--danger);">-₹0.00 (0.00%)</div>
                 </div>
-                <div class="stat-item">
-                  <span class="stat-label">Day's Gain</span>
-                  <span id="pm-daygain" class="stat-value positive">+₹0.00</span>
+              </div>
+
+              <div class="stat-intelligence-grid">
+                <div class="intelligence-panel">
+                  <div class="panel-icon-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+                  <div class="label">Daily Alpha</div>
+                  <div id="pm-daygain-alpha" class="value" style="color: var(--danger);">-1.54%</div>
+                  <div class="sub-value">vs Nifty 50 Index</div>
                 </div>
-                <div class="stat-item" style="grid-column: span 2;">
-                  <span class="stat-label">Available Balance (Cash)</span>
-                  <span id="avail-balance" class="stat-value" style="color: var(--accent); font-size: 1.4rem;">₹0.00</span>
+                <div class="intelligence-panel">
+                  <div class="panel-icon-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m22 7-8.5 8.5L8 10l-6 6"/><path d="M16 7h6v6"/></svg></div>
+                  <div class="label">Day's Profit</div>
+                  <div id="pm-daygain" class="value" style="color: var(--accent);">₹0.00</div>
+                  <div class="sub-value">Realized/Unrealized</div>
+                </div>
+                <div class="intelligence-panel">
+                  <div class="panel-icon-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18.06"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg></div>
+                  <div class="label">Total Capital</div>
+                  <div id="pm-invested" class="value">₹0.00</div>
+                  <div class="sub-value">Net Principal</div>
+                </div>
+                <div class="intelligence-panel">
+                  <div class="panel-icon-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div>
+                  <div class="label">Risk Profile</div>
+                  <div class="value">Low Risk</div>
+                  <div class="sub-value">β Coefficient: 0.85</div>
+                </div>
+                <div class="intelligence-panel">
+                  <div class="panel-icon-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></div>
+                  <div class="label">Diversification</div>
+                  <div id="pm-div-score" class="value">0/10</div>
+                  <div class="sub-value">Sector Health Score</div>
+                </div>
+                <div class="intelligence-panel">
+                  <div class="panel-icon-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div>
+                  <div class="label">Buying Power</div>
+                  <div id="avail-balance" class="value">₹0.00</div>
+                  <div class="sub-value">Wallet Balance</div>
+                </div>
+              </div>
+
+              <div class="exposure-bar-container">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                  <div class="text-muted">Portfolio Diversification Analysis</div>
+                  <div class="text-secondary" style="font-size: 0.8rem;">78% Optimal</div>
+                </div>
+                <div style="height: 6px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden;">
+                  <div style="width: 78%; height: 100%; background: linear-gradient(90deg, var(--fintech-cyan), #0891b2); border-radius: 10px;"></div>
                 </div>
               </div>
             </div>
+
 
             <div class="premium-card card-span-8">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -254,31 +271,27 @@
               <div style="height: 220px;"><canvas id="portfolioChart"></canvas></div>
             </div>
 
-            <!-- Mid Row: Allocation & Risk & AI Insights -->
-            <div class="premium-card card-span-4">
-              <h3 style="margin-bottom:20px;">Sector Allocation</h3>
-              <div style="height: 180px;"><canvas id="allocationChart"></canvas></div>
-            </div>
-
-            <div class="premium-card card-span-4">
-              <h3 style="margin-bottom:20px;">AI Risk Analysis</h3>
-              <div class="risk-meter-v2">
-                <div class="meter-track"></div>
-                <div id="risk-needle-v2" class="meter-needle-v2"></div>
-                <div style="text-align:center; margin-top:10px;">
-                  <div id="risk-score-v2" style="font-size: 1.2rem; font-weight: 800;">Analyzing...</div>
-                  <div class="muted" style="font-size: 0.75rem;">Health Score: <strong id="div-score-v2">0/10</strong></div>
+            <div class="premium-card card-span-12">
+              <h3 style="margin-bottom:20px;">Scenario Intelligence</h3>
+              <div id="scenario-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px;">
+                <div class="scenario-card">
+                  <p class="eyebrow" style="font-size: 0.6rem;">Market Crash (-10%)</p>
+                  <p id="crash-impact" style="margin: 8px 0; font-weight: 700; color: var(--danger);">-₹0.00</p>
+                  <p class="muted" style="font-size: 0.7rem;">Estimated protection: High</p>
+                </div>
+                <div class="scenario-card">
+                  <p class="eyebrow" style="font-size: 0.6rem;">Bull Run (+5%)</p>
+                  <p id="bull-impact" style="margin: 8px 0; font-weight: 700; color: var(--accent);">+₹0.00</p>
+                  <p class="muted" style="font-size: 0.7rem;">Estimated capture: 85%</p>
+                </div>
+                <div class="scenario-card">
+                  <p class="eyebrow" style="font-size: 0.6rem;">Sector Rotation</p>
+                  <p style="margin: 8px 0; font-weight: 700; color: var(--info);">Resilient</p>
+                  <p class="muted" style="font-size: 0.7rem;">IT & Banking exposure balanced</p>
                 </div>
               </div>
-              <div id="sector-warnings" style="margin-top:20px;"></div>
             </div>
 
-            <div class="premium-card card-span-4">
-              <h3 style="margin-bottom:20px;">Smart AI Copilot</h3>
-              <div id="ai-insights-v2" style="display: flex; flex-direction: column; gap: 10px;">
-                <p class="muted" style="text-align: center; margin-top: 40px;">No alerts at this time.</p>
-              </div>
-            </div>
 
             <!-- Bottom Row: Holdings & Transactions -->
             <div class="premium-card card-span-12">
@@ -343,18 +356,22 @@
                   <option value="cyan">Cyan</option>
                 </select>
               </div>
-              <button id="saveProfileBtn" class="btn btn-primary" style="margin-top: 10px;">Save Profile</button>
+              <div class="field">
+                <label data-i18n="language_label">App Language</label>
+                <select id="languageSelect" class="select" onchange="window.setLanguage(this.value)">
+                  <option value="en">English (International)</option>
+                  <option value="hi">हिंदी (Hindi)</option>
+                </select>
+              </div>
+              <button id="saveProfileBtn" class="btn btn-primary" style="margin-top: 10px;" data-i18n="save_profile">Save Profile</button>
               <span id="profileSaveStatus" class="muted" style="margin-top: 5px;"></span>
             </article>
           </div>
         </section>
       </div>
 
-      <aside class="sidebar">
-        <article class="side-card" style="padding: 16px;"><div id="top-gainers"></div></article>
-        <article class="side-card" style="padding: 16px;"><div id="top-losers"></div></article>
-        <article class="side-card"><h3>Sector Heatmap</h3><div id="sector-grid" class="sector-grid"></div></article>
-      </aside>
+      </div>
+      <!-- Sidebar removed from here -->
     </main>
 
     <footer class="footer"><span>StockSense realtime stack</span><span>Last sync: <strong id="footer-sync">—</strong></span></footer>
@@ -450,6 +467,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=2.0"></script>
 </body>
 </html>

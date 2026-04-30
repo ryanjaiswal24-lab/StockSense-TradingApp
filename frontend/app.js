@@ -18,6 +18,7 @@ import {
   signOut,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInAnonymously,
   updateProfile
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
@@ -52,8 +53,84 @@ const state = {
   transactions: {},
   profile: {},
   listenersStarted: false,
-  newsLimit: 5
+  newsLimit: 5,
+  language: 'en'
 };
+
+const translations = {
+  en: {
+    nav_news: "News",
+    nav_ai: "AI Picks",
+    nav_live: "Live",
+    nav_portfolio: "Portfolio",
+    nav_profile: "Profile",
+    market_label: "Market Intelligence",
+    wealth_label: "Wealth Intelligence",
+    ai_label: "Machine Learning",
+    headlines_label: "Financial Headlines",
+    portfolio_value: "Net Portfolio Value",
+    daily_alpha: "Daily Alpha",
+    days_profit: "Day's Profit",
+    total_capital: "Total Capital",
+    risk_profile: "Risk Profile",
+    buying_power: "Buying Power",
+    active_positions: "Active Positions",
+    execute_trade: "Execute Trade",
+    ai_smart_report: "AI Smart Report",
+    news_search: "Search headlines...",
+    live_sync: "LIVE SYNC",
+    guest_name: "Guest Investor",
+    save_profile: "Save Profile",
+    language_label: "App Language"
+  },
+  hi: {
+    nav_news: "समाचार",
+    nav_ai: "AI सुझाव",
+    nav_live: "लाइव मार्केट",
+    nav_portfolio: "पोर्टफोलियो",
+    nav_profile: "प्रोफ़ाइल",
+    market_label: "मार्केट इंटेलिजेंस",
+    wealth_label: "वेल्थ इंटेलिजेंस",
+    ai_label: "मशीन लर्निंग",
+    headlines_label: "वित्तीय समाचार",
+    portfolio_value: "कुल पोर्टफोलियो मूल्य",
+    daily_alpha: "दैनिक अल्फा",
+    days_profit: "आज का लाभ",
+    total_capital: "कुल पूंजी",
+    risk_profile: "जोखिम प्रोफ़ाइल",
+    buying_power: "खरीदने की शक्ति",
+    active_positions: "सक्रिय निवेश",
+    execute_trade: "ट्रेड निष्पादित करें",
+    ai_smart_report: "AI स्मार्ट रिपोर्ट",
+    news_search: "समाचार खोजें...",
+    live_sync: "लाइव सिंक",
+    guest_name: "अतिथि निवेशक",
+    save_profile: "प्रोफ़ाइल सहेजें",
+    language_label: "ऐप की भाषा"
+  }
+};
+
+window.setLanguage = function(lang) {
+  state.language = lang;
+  localStorage.setItem("stocksense_lang", lang);
+  updateLanguageUI();
+  // Re-render sections to apply language changes
+  renderNews();
+  if (state.portfolio) renderPortfolio(state.portfolio);
+  if (state.aiPicks) renderAIPicks(state.aiPicks);
+};
+
+function updateLanguageUI() {
+  const t = translations[state.language];
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.getAttribute("data-i18n");
+    if (t[key]) el.textContent = t[key];
+  });
+  
+  // Update placeholders
+  const newsInput = document.getElementById("news-input");
+  if (newsInput) newsInput.placeholder = t.news_search;
+}
 
 const authGate = document.getElementById("authGate");
 const appShell = document.getElementById("appShell");
@@ -689,8 +766,12 @@ function renderPortfolio(portfolio) {
 
   const rows = Object.values(portfolio || {}).map((item) => {
     if (!item || !item.ticker) return "";
-    const liveData = state.livePrices[item.ticker.replace(".", "_")] || {};
+    const safeTicker = item.ticker.replace(".", "_");
+    const liveData = state.livePrices[safeTicker] || {};
+    const metaData = state.stocks[safeTicker] || {};
     const currentPrice = liveData.price || item.buyPrice;
+    const sector = metaData.sector || liveData.sector || "Other";
+    const displayName = metaData.name || liveData.name || item.ticker;
     const changePct = liveData.change_pct || 0;
     
     const invested = Number(item.qty || 0) * Number(item.buyPrice || 0);
@@ -709,24 +790,24 @@ function renderPortfolio(portfolio) {
     return `
       <tr>
         <td>
-          <div style="font-weight: 800; color: var(--accent);">${item.ticker}</div>
-          <div class="muted" style="font-size: 0.75rem;">${liveData.name || 'Equity'}</div>
+          <div style="font-weight: 900; color: #fff; font-size: 1rem;">${item.ticker}</div>
+          <div class="text-muted" style="font-size: 0.7rem;">${displayName}</div>
         </td>
-        <td>${item.qty}</td>
-        <td>${formatCurrency(item.buyPrice)}</td>
-        <td>${formatCurrency(currentPrice)}</td>
-        <td style="font-weight: 700;">${formatCurrency(currentValue)}</td>
+        <td class="text-secondary" style="font-weight: 700;">${item.qty}</td>
+        <td class="text-secondary">${formatCurrency(item.buyPrice)}</td>
+        <td class="text-secondary">${formatCurrency(currentPrice)}</td>
+        <td style="font-weight: 900; color: #fff;">${formatCurrency(currentValue)}</td>
         <td>
-          <div class="${pnlCls}" style="font-weight: 800;">${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}</div>
-          <div class="${pnlCls}" style="font-size: 0.75rem;">${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%</div>
+          <div class="${pnlCls}" style="font-weight: 900; font-size: 1rem;">${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}</div>
+          <div class="${pnlCls}" style="font-size: 0.75rem; font-weight: 700;">${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%</div>
         </td>
         <td>
           <button class="why-holding-btn" onclick="alert('AI Insights for ${item.ticker}: Currently showing strong momentum with ${changePct.toFixed(2)}% daily move and healthy fundamental indicators.')">AI Analysis</button>
         </td>
         <td>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-ghost btn-sm" onclick="window.openTxModal('buy', '${item.ticker}')" style="padding: 4px 8px; font-size: 0.7rem;">Buy</button>
-            <button class="btn btn-ghost btn-sm" onclick="window.openTxModal('sell', '${item.ticker}')" style="padding: 4px 8px; font-size: 0.7rem;">Sell</button>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn-table-buy" onclick="window.openTxModal('buy', '${item.ticker}')">Buy</button>
+            <button class="btn-table-sell" onclick="window.openTxModal('sell', '${item.ticker}')">Sell</button>
           </div>
         </td>
       </tr>
@@ -873,8 +954,10 @@ function renderAllocationChart(portfolio) {
   const sectorMap = {};
   Object.values(portfolio).forEach(item => {
     if (!item || !item.ticker) return;
-    const live = state.livePrices[item.ticker.replace(".", "_")] || {};
-    const sector = live.sector || "Other";
+    const safeTicker = item.ticker.replace(".", "_");
+    const live = state.livePrices[safeTicker] || {};
+    const meta = state.stocks[safeTicker] || {};
+    const sector = meta.sector || live.sector || "Other";
     const value = item.qty * (live.price || item.buyPrice);
     if (value > 0) {
       sectorMap[sector] = (sectorMap[sector] || 0) + value;
@@ -910,7 +993,7 @@ function renderAllocationChart(portfolio) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: '70%',
+      cutout: '20%',
       plugins: {
         legend: { position: 'right', labels: { color: '#a1a1aa', boxWidth: 12, padding: 15 } }
       }
@@ -950,6 +1033,7 @@ function renderAdvancedAIInsights(portfolio) {
   // New: Average P/E of portfolio
   let totalPE = 0, peCount = 0;
   items.forEach(it => {
+    if (!it || !it.ticker) return;
     const live = state.livePrices[it.ticker.replace(".", "_")];
     if(live?.pe) { totalPE += live.pe; peCount++; }
   });
@@ -961,6 +1045,36 @@ function renderAdvancedAIInsights(portfolio) {
   const valuationNote = document.getElementById("valuation-summary");
   if(valuationNote) valuationNote.textContent = `Avg P/E: ${avgPE} | Stocks: ${items.length}`;
 
+
+  // Update Mini Diversification Score & Suggestion in Hero
+  const miniDiv = document.getElementById("pm-div-score");
+  const divSug = document.getElementById("div-sug");
+  if (miniDiv) {
+    miniDiv.textContent = `${healthScore}/10`;
+    miniDiv.style.color = healthScore > 7 ? 'var(--accent)' : (healthScore > 4 ? 'var(--warning)' : 'var(--danger)');
+  }
+  if (divSug) {
+    if (healthScore > 7) divSug.textContent = "Optimal Mix";
+    else if (healthScore > 4) divSug.textContent = "Add 1-2 Sectors";
+    else divSug.textContent = "Over-Concentrated";
+  }
+
+  // Other Suggestions
+  const alphaSug = document.getElementById("alpha-sug");
+  const gainSug = document.getElementById("gain-sug");
+  const volSug = document.getElementById("vol-sug");
+
+  if (alphaSug) {
+    const alpha = parseFloat(pmDayGainAlpha?.textContent || "0");
+    alphaSug.textContent = alpha > 0 ? "Beating Market" : "Trailing Nifty";
+  }
+  if (gainSug) {
+    const dayGain = parseFloat((pmDayGain?.textContent || "0").replace(/[^0-9.-]/g, ""));
+    gainSug.textContent = dayGain > 0 ? "Daily Profit" : "Daily Drawdown";
+  }
+  if (volSug) {
+    volSug.textContent = items.length > 5 ? "Diversified Risk" : "Single Stock Risk";
+  }
 
   let riskAngle = 45;
   let riskText = "Moderate";
@@ -1165,7 +1279,7 @@ function renderLive(stocks) {
       const icon = change >= 0 ? "▲" : "▼";
       const aiScore = stock.ml ? formatScore(stock.ml) : "N/A";
       const signals = Array.isArray(stock.signals) ? stock.signals.join(", ") : "N/A";
-      const safeTicker = stock.ticker.replace(/[^a-zA-Z0-9]/g, '_');
+      const safeTicker = (stock.ticker || "").replace(/[^a-zA-Z0-9]/g, '_');
       
       return `
         <details class="scrip-accordion" id="details-${safeTicker}">
@@ -1271,37 +1385,40 @@ function renderNews() {
   }
 
   if (!filtered.length) {
-    newsGrid.innerHTML = emptyState("No news found.");
+    newsGrid.innerHTML = `<div class="premium-card" style="grid-column: 1/-1; text-align: center; padding: 60px;">
+      <p class="muted">${state.language === 'hi' ? 'कोई समाचार नहीं मिला' : 'No matching intelligence found.'}</p>
+    </div>`;
     return;
   }
 
-  const visibleNews = filtered.slice(0, state.newsLimit);
-  
-  const newsHtml = visibleNews
-    .map((item) => {
-      return `
-        <details class="news-accordion" onmouseenter="this.setAttribute('open', '')" onmouseleave="this.removeAttribute('open')">
-          <summary class="news-summary">
-            <h4>${item.title || "Untitled story"}</h4>
-            <div class="news-meta">
-              <span class="news-category-tag" style="background: rgba(0, 255, 163, 0.1); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; margin-right: 8px;">${item.category || "General"}</span>
-              <span class="sentiment-tag" style="background: ${item.sentiment === 'Bullish' ? 'rgba(0, 255, 163, 0.1)' : (item.sentiment === 'Bearish' ? 'rgba(255, 71, 87, 0.1)' : 'rgba(255,255,255,0.05)')}; color: ${item.sentiment === 'Bullish' ? 'var(--accent)' : (item.sentiment === 'Bearish' ? 'var(--danger)' : 'var(--muted)')}; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; margin-right: 8px;">${item.sentiment || "Neutral"}</span>
-              <span>${item.source || "Finance Hub"}</span>
-              <span>•</span>
-              <span>${formatTimestamp(item.updated_at)}</span>
-            </div>
-          </summary>
-          <div class="news-details">
-            <a href="${item.link || '#'}" target="_blank" class="btn btn-primary" style="display: inline-block; margin-top: 8px;">Read Full Article</a>
+  const newsHtml = filtered.slice(0, state.newsLimit).map(n => {
+    const ts = n.updated_at || Date.now();
+    const timeAgo = Math.floor((Date.now() - ts) / 60000);
+    const timeDisplay = timeAgo < 1 ? (state.language === 'hi' ? 'अभी' : 'Just now') : 
+                        (timeAgo < 60 ? `${timeAgo}${state.language === 'hi' ? ' मिनट पहले' : 'm ago'}` : 
+                        `${Math.floor(timeAgo/60)}${state.language === 'hi' ? ' घंटे पहले' : 'h ago'}`);
+    
+    return `
+      <article class="news-card-premium" onclick="window.open('${n.link}', '_blank')">
+        <div class="news-content">
+          <div class="news-meta">
+            <span class="news-source">${n.source || 'Finance'}</span>
+            <span class="news-time"><span class="live-indicator"></span>${timeDisplay}</span>
           </div>
-        </details>
-      `;
-    })
-    .join("");
+          <h3 class="news-title">${n.title}</h3>
+          <p class="news-excerpt">${n.summary || (state.language === 'hi' ? 'इस बाज़ार घटना पर पूरी इंटेलिजेंस रिपोर्ट पढ़ने के लिए क्लिक करें।' : 'Click to read full intelligence report on this market event.')}</p>
+          <div class="news-footer">
+            <span class="news-tag">${state.language === 'hi' ? 'बाज़ार अंतर्दृष्टि' : 'MARKET INSIGHT'}</span>
+            <span class="read-more">${state.language === 'hi' ? 'पूरी रिपोर्ट पढ़ें' : 'Read Full Report'} →</span>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join("");
 
   let loadMoreHtml = "";
   if (filtered.length > state.newsLimit) {
-    loadMoreHtml = `<button id="btn-load-more-news" class="btn btn-ghost" style="width: 100%; margin-top: 12px;">Load More News</button>`;
+    loadMoreHtml = `<button id="btn-load-more-news" class="btn btn-ghost" style="width: 100%; margin-top: 12px;">${state.language === 'hi' ? 'और समाचार लोड करें' : 'Load More News'}</button>`;
   }
 
   newsGrid.innerHTML = newsHtml + loadMoreHtml;
@@ -1755,7 +1872,11 @@ document.addEventListener("DOMContentLoaded", () => {
       console.log("✅ AI Smart Report Button Bound");
     }
   }, 1000);
+  // Init UI
+  const savedLang = localStorage.getItem("stocksense_lang") || "en";
+  setLanguage(savedLang);
+  const langSelector = document.getElementById("languageSelect");
+  if (langSelector) langSelector.value = savedLang;
 });
 
 console.log("🚀 StockSense App Engine Loaded Successfully");
-

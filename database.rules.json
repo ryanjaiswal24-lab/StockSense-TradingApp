@@ -1,0 +1,34 @@
+{
+  "rules": {
+    "live_prices": {
+      ".read": true,
+      ".write": false
+    },
+    "ai_picks": {
+      ".read": true,
+      ".write": false
+    },
+    "news_cache": {
+      ".read": true,
+      ".write": false
+    },
+    "stocks": {
+      ".read": true,
+      ".write": false
+    },
+    "market_status": { ".read": true, ".write": false },
+    "market_indices": { ".read": true, ".write": false },
+    "market_sentiment": { ".read": true, ".write": false },
+    "market_breadth": { ".read": true, ".write": false },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+    "commands": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+}
