@@ -59,7 +59,7 @@ const provider = new GoogleAuthProvider();
 
 // GROQ AI CONFIGURATION
 const GROQ_API_KEY = "";
-const GROQ_MODEL = "mixtral-8x7b-32768"; // Using Mixtral as a potentially less restricted model 
+const GROQ_MODEL = "llama-3.3-70b-versatile"; // Using Llama 3.3 Versatile for high-performance reasoning
 
 const state = {
   user: null,
