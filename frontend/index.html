@@ -68,9 +68,101 @@
     </div>
 
   <div id="index-bar" class="index-bar"></div>
+  <div id="news-ticker" class="news-ticker">
+    <div class="ticker-content" id="ticker-news-content">
+      <span>Connecting to global news feed...</span>
+    </div>
+  </div>
   <canvas id="bg-canvas"></canvas>
 
   <div id="appShell" class="app-shell hidden">
+    <!-- Mobile Header -->
+    <div class="mobile-header">
+      <button id="mobile-drawer-toggle" class="mobile-icon-btn" aria-label="Open menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="mobile-brand">StockSense</div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button id="mobile-search-toggle" class="mobile-icon-btn" aria-label="Toggle search">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <div id="mobile-sync-status" class="ctrl-badge" style="gap: 6px; font-weight: 700; padding: 4px 8px; font-size: 0.65rem;">
+          <span style="width: 6px; height: 6px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent); animation: pulse 2s infinite;"></span>
+          SYNC
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Search Overlay -->
+    <div id="mobile-search-overlay" class="mobile-search-overlay hidden">
+      <input type="text" id="mobile-search-input" placeholder="Search stock or filter..." class="input" style="width: 100%; height: 44px; border-radius: 12px; background: var(--panel-strong); border: 1px solid var(--line); color: var(--text);" />
+    </div>
+
+    <!-- Mobile Sidebar Drawer -->
+    <div id="mobile-drawer-backdrop" class="mobile-drawer-backdrop hidden"></div>
+    <aside id="mobile-drawer" class="mobile-drawer">
+      <div class="drawer-header">
+        <div class="drawer-brand">StockSense Pro</div>
+        <button id="mobile-drawer-close" class="mobile-icon-btn" style="color: var(--muted); font-size: 1.8rem; line-height: 1;">&times;</button>
+      </div>
+      <div class="drawer-profile" id="drawer-profile-info" style="display: none;">
+        <img id="drawer-profile-pic" alt="Profile" />
+        <div style="min-width: 0; flex: 1;">
+          <div id="drawer-profile-name" style="font-weight: 700; font-size: 0.95rem; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Guest</div>
+          <div id="drawer-profile-email" style="font-size: 0.75rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Not logged in</div>
+        </div>
+      </div>
+      <nav class="drawer-menu">
+        <a href="#section-news" class="drawer-menu-item active" data-tab="news">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 11a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+          <span>News Headlines</span>
+        </a>
+        <a href="#section-ai" class="drawer-menu-item" data-tab="ai">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v8"/><path d="m4.93 4.93 1.41 1.41"/><path d="M2 12h8"/><path d="m4.93 19.07 1.41-1.41"/><path d="M12 22v-8"/><path d="m19.07 19.07-1.41-1.41"/><path d="M22 12h-8"/><path d="m19.07 4.93-1.41 1.41"/><circle cx="12" cy="12" r="4"/></svg>
+          <span>AI Recommendations</span>
+        </a>
+        <a href="#section-live" class="drawer-menu-item" data-tab="live">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+          <span>Live Market</span>
+        </a>
+        <a href="#section-portfolio" class="drawer-menu-item" data-tab="portfolio">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+          <span>Portfolio Wealth</span>
+        </a>
+        <a href="#section-profile" class="drawer-menu-item" data-tab="profile">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span>User Profile</span>
+        </a>
+        <div class="drawer-separator"></div>
+        <a href="#" id="mobile-chat-link" class="drawer-menu-item">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>Specialist AI Chat</span>
+        </a>
+        <a href="#" id="mobile-logout-link" class="drawer-menu-item" style="color: var(--danger); display: none;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span>Logout Account</span>
+        </a>
+        <a href="#" id="mobile-login-link" class="drawer-menu-item" style="color: var(--accent);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          <span>Login / Sign In</span>
+        </a>
+      </nav>
+    </aside>
+
+    <!-- Mobile Bottom Quick Actions Bar -->
+    <div class="mobile-quick-actions">
+      <button id="mobile-action-trade" class="btn btn-primary" style="flex: 1; height: 44px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; display: flex; gap: 8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Execute Trade
+      </button>
+      <button id="mobile-action-chat" class="btn btn-ghost" style="height: 44px; width: 48px; padding: 0; display: grid; place-items: center; border-radius: 12px; font-size: 1.15rem;" aria-label="Ask AI">
+        💬
+      </button>
+      <button id="mobile-action-refresh" class="btn btn-ghost" style="height: 44px; width: 48px; padding: 0; display: grid; place-items: center; border-radius: 12px; font-size: 1.15rem;" aria-label="Refresh">
+        🔄
+      </button>
+    </div>
+
     <header class="topbar">
       <div class="brand">
         <p class="eyebrow">Realtime Dashboard</p>
@@ -109,10 +201,52 @@
 
 
         <section id="section-ai" class="page-section">
-          <div class="section-head">
+          <div class="section-head" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
             <div><p class="eyebrow" data-i18n="ai_label">Machine Learning</p><h2 data-i18n="nav_ai">AI Suggestions</h2></div>
+            <!-- AI Market Suggestion Card -->
+            <div id="ai-market-pulse-container"></div>
           </div>
+
           <div id="aiGrid" class="picks-grid"></div>
+
+          <!-- Curated Intelligence Sections -->
+          <div class="curated-intelligence-container" style="margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+            <!-- Best Performers -->
+            <article class="premium-card" style="padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+              <h3 style="font-size: 1.2rem; margin: 0; color: var(--accent); display: flex; align-items: center; gap: 10px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                Top Results Performers
+              </h3>
+              <p class="muted" style="margin: 0; font-size: 0.8rem; line-height: 1.4;">Companies with exceptional yearly and quarterly revenue and earnings growth.</p>
+              <div id="bestPerformersList" style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+                <div class="empty-state" style="padding: 16px;">Analyzing results performance...</div>
+              </div>
+            </article>
+
+            <!-- Potential Stars -->
+            <article class="premium-card" style="padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+              <h3 style="font-size: 1.2rem; margin: 0; color: var(--info); display: flex; align-items: center; gap: 10px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                Potential Future Stars
+              </h3>
+              <p class="muted" style="margin: 0; font-size: 0.8rem; line-height: 1.4;">Stocks showing strong future earning indicators and massive upside price potential.</p>
+              <div id="potentialStarsList" style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+                <div class="empty-state" style="padding: 16px;">Calculating potential upsides...</div>
+              </div>
+            </article>
+
+            <!-- Dividend Stars -->
+            <article class="premium-card" style="padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+              <h3 style="font-size: 1.2rem; margin: 0; color: var(--warning); display: flex; align-items: center; gap: 10px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                Elite Dividend Yielders
+              </h3>
+              <p class="muted" style="margin: 0; font-size: 0.8rem; line-height: 1.4;">Highest annual dividend yielders in the index to secure passive cash flows.</p>
+              <div id="dividendStarsList" style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+                <div class="empty-state" style="padding: 16px;">Calculating dividend yields...</div>
+              </div>
+            </article>
+          </div>
         </section>
 
         <section id="section-live" class="page-section active">
@@ -153,31 +287,106 @@
 
               <div class="hero-strip" style="display: flex; flex-direction: column; gap: 10px; width: 100%; padding: 0;">
                 <article class="hero-card" style="width: 100%; border: 1px solid rgba(255,255,255,0.05);"><span class="hero-label">Market</span><div id="market-pill" class="market-pill closed" style="margin-left: 0; margin-top: 8px;"><span id="marketPhase">Waiting...</span></div><p id="marketSummary" class="muted" style="margin-top: 8px;">No market status yet</p></article>
-                <article class="hero-card" style="width: 100%; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;"><span class="hero-label">Gainers</span><strong id="stat-gainers" class="hstat-val">0</strong></article>
-                <article class="hero-card" style="width: 100%; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;"><span class="hero-label">Losers</span><strong id="stat-losers" class="hstat-val">0</strong></article>
+                <article class="hero-card" onclick="window.filterLive('gainers')" style="width: 100%; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; cursor: pointer;"><span class="hero-label">Gainers</span><strong id="stat-gainers" class="hstat-val">0</strong></article>
+                <article class="hero-card" onclick="window.filterLive('losers')" style="width: 100%; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; cursor: pointer;"><span class="hero-label">Losers</span><strong id="stat-losers" class="hstat-val">0</strong></article>
                 <article class="hero-card" style="width: 100%; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;"><span class="hero-label">Avg Move</span><strong id="stat-avg" class="hstat-val">0.00%</strong></article>
               </div>
 
               <article class="side-card" style="padding: 16px;"><div id="top-gainers"></div></article>
               <article class="side-card" style="padding: 16px;"><div id="top-losers"></div></article>
+              
+              <article class="side-card" style="padding: 20px; background: linear-gradient(145deg, var(--surface), rgba(0,255,163,0.02)); border: 1px solid var(--accent);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                  <div>
+                    <p class="eyebrow" style="color: var(--accent);">COMMODITY TRACKER</p>
+                    <h3 style="margin: 0; font-size: 1.2rem;">Brent Crude</h3>
+                  </div>
+                  <div class="live-indicator" style="background: var(--accent); box-shadow: 0 0 10px var(--accent);"></div>
+                </div>
+                <div id="brent-crude-container" style="display: flex; align-items: baseline; gap: 10px;">
+                  <span id="brent-price" style="font-size: 2rem; font-weight: 900; letter-spacing: -1px;">$0.00</span>
+                  <span id="brent-change" style="font-weight: 700; font-size: 0.9rem;">0.00%</span>
+                </div>
+                <p class="muted" style="font-size: 0.7rem; margin-top: 8px; text-transform: uppercase; letter-spacing: 1px;">Global Benchmark • Realtime</p>
+              </article>
+
               <article class="side-card"><h3>Sector Heatmap</h3><div id="sector-grid" class="sector-grid"></div></article>
             </aside>
           </div>
         </section>
 
         <section id="section-news" class="page-section">
-          <div class="section-head">
-            <div><p class="eyebrow" data-i18n="headlines_label">Headlines</p><h2 data-i18n="nav_news">Financial Intelligence</h2></div>
-            <div class="section-actions"><input id="news-input" class="input" type="text" placeholder="Search headlines..." /><button id="btn-news-clear" class="btn btn-ghost">Clear</button></div>
+          <div class="news-layout" style="display: flex; gap: 24px; align-items: flex-start;">
+            <!-- News Main Feed -->
+            <div class="news-main" style="flex: 1; min-width: 0;">
+              <div class="section-head">
+                <div><p class="eyebrow" data-i18n="headlines_label">Headlines</p><h2 data-i18n="nav_news">Financial Intelligence</h2></div>
+                <div class="section-actions"><input id="news-input" class="input" type="text" placeholder="Search headlines..." /><button id="btn-news-clear" class="btn btn-ghost">Clear</button></div>
+              </div>
+              <div id="news-categories-bar" style="display: flex; gap: 12px; margin-bottom: 24px; overflow-x: auto; padding-bottom: 8px; border-bottom: 1px solid var(--line);">
+                <span class="ctrl-badge active" id="cat-all" style="cursor: pointer;" onclick="window.filterNews('all')">All Stories</span>
+                <span class="ctrl-badge" id="cat-indian" style="cursor: pointer;" onclick="window.filterNews('Indian Market')">Indian Market</span>
+                <span class="ctrl-badge" id="cat-global" style="cursor: pointer;" onclick="window.filterNews('Global Market')">Global Finance</span>
+                <span class="ctrl-badge" id="cat-bullish" style="cursor: pointer;" onclick="window.filterNews('Bullish')">🟢 Bullish Outlook</span>
+                <span class="ctrl-badge" id="cat-bearish" style="cursor: pointer;" onclick="window.filterNews('Bearish')">🔴 Bearish Outlook</span>
+              </div>
+              <div id="newsGrid" class="news-feed"></div>
+            </div>
+
+            <!-- News Sidebar -->
+            <aside class="news-sidebar" style="width: 350px; flex-shrink: 0; display: flex; flex-direction: column; gap: 20px;">
+              <div id="earnings-tracker-container" class="side-card" style="padding: 24px; border-left: 5px solid var(--info); cursor: pointer; animation: slideUp 0.6s ease-out both;" onclick="window.toggleEarningsModal(true)">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+                  <p class="eyebrow" style="color: var(--info);">FINANCIAL CALENDAR</p>
+                  <div class="live-indicator" style="background: var(--info); box-shadow: 0 0 10px var(--info);"></div>
+                </div>
+                <h3 style="margin: 0 0 8px 0; font-size: 1.35rem; letter-spacing: -0.5px;">Nifty 500 Results</h3>
+                <p class="muted" style="font-size: 0.85rem; line-height: 1.5; margin-bottom: 20px;">Comprehensive tracking for upcoming quarterly earnings and analyst expectations.</p>
+                <div id="earnings-summary-badge" class="ctrl-badge" style="background: var(--info); color: #fff; padding: 12px; border-radius: 12px; font-weight: 800; text-align: center; width: 100%; font-size: 0.9rem; border: none; box-shadow: 0 4px 12px rgba(96, 165, 250, 0.2);">
+                  0 Upcoming Results
+                </div>
+                <div style="margin-top: 16px; font-size: 0.7rem; color: var(--muted); text-align: center; text-transform: uppercase; letter-spacing: 1px;">
+                  Click to Expand Schedule →
+                </div>
+              </div>
+
+              <!-- Extra Sidebar Space for Future Widgets -->
+              <div class="side-card" style="padding: 24px; background: rgba(96, 165, 250, 0.03); border-top: 4px solid var(--info);">
+                <p class="eyebrow" style="color: var(--info); margin-bottom: 12px;">MARKET SENTIMENT</p>
+                <h4 style="margin: 0 0 16px 0; font-size: 1.1rem;">Institutional Activity</h4>
+                
+                <div id="fiidii-container" style="display: flex; flex-direction: column; gap: 12px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(255,255,255,0.02); border-radius: 12px;">
+                    <span style="font-size: 0.85rem; font-weight: 600;">FII Net Flow</span>
+                    <span id="fii-net-flow" style="font-weight: 800; font-size: 0.9rem;">--</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(255,255,255,0.02); border-radius: 12px;">
+                    <span style="font-size: 0.85rem; font-weight: 600;">DII Net Flow</span>
+                    <span id="dii-net-flow" style="font-weight: 800; font-size: 0.9rem;">--</span>
+                  </div>
+                </div>
+                
+                <p id="fiidii-date" class="muted" style="font-size: 0.7rem; margin-top: 16px; text-align: center; text-transform: uppercase; letter-spacing: 0.5px;">Latest Data: Fetching...</p>
+              </div>
+            </aside>
           </div>
-          <div id="news-categories-bar" style="display: flex; gap: 12px; margin-bottom: 24px; overflow-x: auto; padding-bottom: 8px; border-bottom: 1px solid var(--line);">
-            <span class="ctrl-badge active" style="cursor: pointer; background: var(--accent); color: #000;">All Stories</span>
-            <span class="ctrl-badge" style="cursor: pointer;">Indian Market</span>
-            <span class="ctrl-badge" style="cursor: pointer;">Global Finance</span>
-            <span class="ctrl-badge" style="cursor: pointer;">Tech Giants</span>
-          </div>
-          <div id="newsGrid" class="news-feed"></div>
         </section>
+
+  <!-- Earnings Tracker Modal -->
+  <div id="earningsModal" class="auth-gate hidden" style="position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.85); display: grid; place-items: center; padding: 24px; backdrop-filter: blur(15px);">
+    <div class="auth-card" style="width: 100%; max-width: 650px; background: var(--surface); border: 1px solid var(--line); border-radius: 24px; max-height: 80vh; display: flex; flex-direction: column;">
+      <div style="padding: 24px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <p class="eyebrow">EARNINGS CALENDAR</p>
+          <h2 style="margin: 0;">Upcoming Results</h2>
+        </div>
+        <button onclick="window.toggleEarningsModal(false)" class="btn btn-ghost" style="width: 40px; height: 40px; border-radius: 50%; padding: 0;">&times;</button>
+      </div>
+      <div id="earnings-list" style="flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 12px;">
+        <p class="muted" style="text-align: center;">Fetching latest earnings schedule...</p>
+      </div>
+    </div>
+  </div>
 
 
 
@@ -241,9 +450,12 @@
                 </div>
                 <div class="intelligence-panel">
                   <div class="panel-icon-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div>
-                  <div class="label">Buying Power</div>
+                  <div class="label" style="display: flex; justify-content: space-between; align-items: center;">
+                    Buying Power
+                    <button class="btn btn-ghost btn-sm" onclick="window.resetPortfolio()" style="font-size: 0.6rem; padding: 2px 6px; color: var(--accent);">Reset</button>
+                  </div>
                   <div id="avail-balance" class="value">₹0.00</div>
-                  <div class="sub-value">Wallet Balance</div>
+                  <div class="sub-value">Wallet Balance (Max 2 Lakhs)</div>
                 </div>
               </div>
 
@@ -348,6 +560,23 @@
                 <label>Display Name</label>
                 <input id="displayNameInput" class="input" type="text" placeholder="Custom Display Name" />
               </div>
+              <div class="field" style="margin-top: 16px;">
+                <label>Theme Accent</label>
+                <select id="themeAccentInput">
+                  <option value="emerald">Emerald (Default)</option>
+                  <option value="amber">Amber Glow</option>
+                  <option value="cyan">Cyber Cyan</option>
+                  <option value="rose">Soft Rose</option>
+                </select>
+              </div>
+              <div class="field" style="margin-top: 16px;">
+                <label>View Mode</label>
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn btn-ghost" onclick="window.setViewMode('auto')" id="mode-auto">Auto</button>
+                  <button class="btn btn-ghost" onclick="window.setViewMode('desktop')" id="mode-desktop">Desktop</button>
+                  <button class="btn btn-ghost" onclick="window.setViewMode('mobile')" id="mode-mobile">Mobile</button>
+                </div>
+              </div>
               <div class="field">
                 <label>Theme Accent</label>
                 <select id="themeAccentInput" class="select">
@@ -368,6 +597,42 @@
             </article>
           </div>
         </section>
+
+        <!-- AI Portfolio Doctor Panel -->
+        <div id="portfolio-doctor-panel" class="premium-card hidden" style="margin-top: 24px; border: 1px solid var(--accent); background: linear-gradient(145deg, var(--surface), rgba(0,255,163,0.02));">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+            <div>
+              <p class="eyebrow" style="color: var(--accent);">DIAGNOSTIC REPORT</p>
+              <h2 style="margin: 0;">Portfolio Intelligence Analysis</h2>
+            </div>
+            <div style="text-align: right;">
+              <div class="muted" style="font-size: 0.7rem; margin-bottom: 4px;">HEALTH SCORE</div>
+              <div id="health-score-value" style="font-size: 2.5rem; font-weight: 900; line-height: 1;">0</div>
+            </div>
+          </div>
+          
+          <div id="doctor-metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px;">
+            <!-- Dynamic stats -->
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <div style="padding: 20px; background: rgba(255,255,255,0.02); border-radius: 16px; border: 1px solid var(--line);">
+              <h4 style="margin-top: 0; color: var(--accent); display: flex; align-items: center; gap: 8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                Current Diagnosis
+              </h4>
+              <div id="doctor-diagnosis" class="muted" style="font-size: 0.9rem; line-height: 1.6;">Analyzing your portfolio DNA...</div>
+            </div>
+            <div style="padding: 20px; background: rgba(255,255,255,0.02); border-radius: 16px; border: 1px solid var(--line);">
+              <h4 style="margin-top: 0; color: var(--info); display: flex; align-items: center; gap: 8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                AI Prescription
+              </h4>
+              <div id="doctor-prescription" class="muted" style="font-size: 0.9rem; line-height: 1.6;">Preparing optimization plan...</div>
+            </div>
+          </div>
+          <div id="doctor-alerts" style="margin-top: 24px;"></div>
+        </div>
       </div>
 
       </div>
@@ -447,6 +712,87 @@
     </div>
   </div>
 
+  <!-- Stock Details Modal -->
+  <div id="stockDetailsModal" class="modal hidden" style="position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; backdrop-filter: blur(12px);">
+    <div class="modal-card" style="background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 28px; width: min(500px, 92%); box-shadow: 0 20px 50px rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <p id="details-modal-sector" class="eyebrow" style="color: var(--accent); letter-spacing: 1px; margin: 0;"></p>
+          <h2 id="details-modal-name" style="margin-top: 6px; margin-bottom: 2px; font-size: 1.5rem; color: #fff;"></h2>
+          <p id="details-modal-ticker" class="muted" style="margin: 0; font-size: 0.9rem; font-weight: 600;"></p>
+        </div>
+        <button id="btn-details-close" style="background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.8rem; line-height: 1; padding: 0;">&times;</button>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; background: rgba(255,255,255,0.02); border: 1px solid var(--line); border-radius: 12px; padding: 16px;">
+        <div>
+          <span style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase;">Trend Score</span>
+          <div style="display: flex; align-items: baseline; gap: 6px; margin-top: 4px;">
+            <span id="details-modal-trend-val" style="font-size: 1.6rem; font-weight: 800; color: var(--accent);"></span>
+            <span style="font-size: 0.8rem; color: var(--muted);">/ 100</span>
+          </div>
+        </div>
+        <div>
+          <span style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase;">Fundamental Quality</span>
+          <div style="display: flex; align-items: baseline; gap: 6px; margin-top: 4px;">
+            <span id="details-modal-quality-val" style="font-size: 1.6rem; font-weight: 800; color: var(--info);"></span>
+            <span style="font-size: 0.8rem; color: var(--muted);">/ 100</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; font-size: 0.85rem;">
+        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 8px;">
+          <span class="muted">Support:</span>
+          <span id="details-modal-support" style="font-weight: 600; color: var(--accent);"></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 8px;">
+          <span class="muted">Resistance:</span>
+          <span id="details-modal-resistance" style="font-weight: 600; color: var(--danger);"></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 8px;">
+          <span class="muted">Volatility:</span>
+          <span id="details-modal-volatility" style="font-weight: 600;"></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 8px;">
+          <span class="muted">52W Range:</span>
+          <span id="details-modal-52w" style="font-weight: 600; font-size: 0.78rem;"></span>
+        </div>
+      </div>
+
+      <!-- Expected Results & Earnings details -->
+      <div id="details-modal-earnings-container" style="background: rgba(96, 165, 250, 0.04); border: 1px solid rgba(96, 165, 250, 0.15); border-radius: 14px; padding: 16px; font-size: 0.85rem; display: flex; flex-direction: column; gap: 10px;" class="hidden">
+        <h4 style="margin: 0; color: var(--info); display: flex; align-items: center; gap: 8px; font-size: 0.95rem; font-weight: 700;">
+          <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--info); box-shadow: 0 0 8px var(--info);"></span>
+          Expected Earnings & Results
+        </h4>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px;">
+          <div><span class="muted" style="font-size: 0.72rem; display: block; margin-bottom: 2px;">Release Date</span><strong id="details-modal-earnings-date" style="color: #fff; font-size: 0.9rem;"></strong></div>
+          <div><span class="muted" style="font-size: 0.72rem; display: block; margin-bottom: 2px;">Market Impact</span><strong id="details-modal-earnings-impact" style="font-size: 0.9rem;"></strong></div>
+          <div><span class="muted" style="font-size: 0.72rem; display: block; margin-bottom: 2px;">Revenue Est.</span><strong id="details-modal-earnings-rev" style="color: #fff; font-size: 0.9rem;"></strong></div>
+          <div><span class="muted" style="font-size: 0.72rem; display: block; margin-bottom: 2px;">EPS Est.</span><strong id="details-modal-earnings-eps" style="color: #fff; font-size: 0.9rem;"></strong></div>
+        </div>
+      </div>
+
+      <div>
+        <span style="font-size: 0.75rem; color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 8px;">Key Signals & Analysis</span>
+        <div id="details-modal-signals" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+        <button id="btn-details-jump" class="btn btn-primary" style="flex: 1 1 140px; display: flex; align-items: center; justify-content: center; gap: 8px; height: 42px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+          Trade & Chart
+        </button>
+        <a id="btn-details-source" href="#" target="_blank" class="btn btn-ghost" style="flex: 1 1 140px; display: flex; align-items: center; justify-content: center; gap: 8px; height: 42px; text-decoration: none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Yahoo Source
+        </a>
+        <button id="btn-details-cancel" class="btn btn-ghost" style="flex: 1 1 100%; height: 42px;">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast-stack" class="toast-stack"></div>
 
   <div id="chatWindow" class="chat-window hidden" style="position: fixed; bottom: 80px; right: 20px; width: 350px; height: 450px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; backdrop-filter: var(--glass); z-index: 10000; display: flex; flex-direction: column; box-shadow: var(--shadow); transition: all 0.3s ease;">
@@ -467,6 +813,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=2.0"></script>
+  <script type="module" src="app.js?v=3.4"></script>
 </body>
 </html>

@@ -1,3 +1,14 @@
+/**
+ * StockSense Core Frontend Logic
+ * ─────────────────────────────────────────────
+ * This file handles:
+ *  - Firebase Initialization (Auth, RTDB, Functions)
+ *  - Real-time Listeners for Market Data & AI Picks
+ *  - UI Rendering (Portfolio, News, Dashboard)
+ *  - Transaction Logic (Buy/Sell)
+ *  - AI Chat Integration (Groq via Proxy)
+ */
+
 console.log("StockSense App Loading...");
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
@@ -21,6 +32,10 @@ import {
   signInAnonymously,
   updateProfile
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFunctions,
+  httpsCallable
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
 // Replace these placeholders with your real Firebase project values.
 const firebaseConfig = {
@@ -39,7 +54,12 @@ const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 const db = getDatabase(app);
 const auth = getAuth(app);
+const functions = getFunctions(app, "asia-south1");
 const provider = new GoogleAuthProvider();
+
+// GROQ AI CONFIGURATION
+const GROQ_API_KEY = "";
+const GROQ_MODEL = "mixtral-8x7b-32768"; // Using Mixtral as a potentially less restricted model 
 
 const state = {
   user: null,
@@ -52,9 +72,13 @@ const state = {
   portfolio: {},
   transactions: {},
   profile: {},
+  earnings: {},
+  fiidii: [],
   listenersStarted: false,
   newsLimit: 5,
-  language: 'en'
+  aiPicksLimit: 4,
+  language: 'en',
+  newsCategory: 'all'
 };
 
 const translations = {
@@ -118,6 +142,41 @@ window.setLanguage = function(lang) {
   renderNews();
   if (state.portfolio) renderPortfolio(state.portfolio);
   if (state.aiPicks) renderAIPicks(state.aiPicks);
+};
+
+window.filterNews = function(category) {
+  state.newsCategory = category;
+  state.newsLimit = 5; // Reset limit on filter change
+  
+  document.querySelectorAll("#news-categories-bar .ctrl-badge").forEach(el => {
+    const isMatch = (category === 'all' && el.id === 'cat-all') || 
+                    (category === 'Indian Market' && el.id === 'cat-indian') ||
+                    (category === 'Global Market' && el.id === 'cat-global') ||
+                    (category === 'Bullish' && el.id === 'cat-bullish') ||
+                    (category === 'Bearish' && el.id === 'cat-bearish');
+    
+    el.classList.toggle("active", isMatch);
+    if (isMatch) {
+      if (category === 'Bullish') {
+        el.style.background = "rgba(0, 255, 163, 0.2)";
+        el.style.color = "var(--accent)";
+        el.style.borderColor = "var(--accent)";
+      } else if (category === 'Bearish') {
+        el.style.background = "rgba(255, 77, 77, 0.2)";
+        el.style.color = "var(--danger)";
+        el.style.borderColor = "var(--danger)";
+      } else {
+        el.style.background = "var(--accent)";
+        el.style.color = "#000";
+        el.style.borderColor = "var(--accent)";
+      }
+    } else {
+      el.style.background = "";
+      el.style.color = "";
+      el.style.borderColor = "";
+    }
+  });
+  renderNews();
 };
 
 function updateLanguageUI() {
@@ -196,106 +255,107 @@ function addChatMessage(role, text) {
   const div = document.createElement("div");
   div.className = `msg ${role}`;
   div.style.cssText = role === 'bot' 
-    ? "background: var(--panel-strong); padding: 8px 12px; border-radius: 12px 12px 12px 0; max-width: 85%; align-self: flex-start; font-size: 0.9rem;"
-    : "background: var(--accent); color: #04100a; padding: 8px 12px; border-radius: 12px 12px 0 12px; max-width: 85%; align-self: flex-end; font-size: 0.9rem; font-weight: 600;";
+    ? "background: var(--panel-strong); padding: 8px 12px; border-radius: 12px 12px 12px 0; max-width: 85%; align-self: flex-start; font-size: 0.9rem; white-space: pre-wrap;"
+    : "background: var(--accent); color: #04100a; padding: 8px 12px; border-radius: 12px 12px 0 12px; max-width: 85%; align-self: flex-end; font-size: 0.9rem; font-weight: 600; white-space: pre-wrap;";
   div.textContent = text;
   chatMessages?.appendChild(div);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-function handleChat() {
+async function handleChat() {
   const text = chatInput.value.trim();
   if(!text) return;
   chatInput.value = "";
   addChatMessage("user", text);
 
-  setTimeout(() => {
-    const response = getAIResponse(text.toLowerCase());
+  // Show thinking state
+  const thinkingDiv = document.createElement("div");
+  thinkingDiv.className = "msg bot thinking";
+  thinkingDiv.style.cssText = "background: var(--panel-strong); padding: 8px 12px; border-radius: 12px 12px 12px 0; max-width: 85%; align-self: flex-start; font-size: 0.9rem; opacity: 0.6;";
+  thinkingDiv.textContent = "Analyzing market data...";
+  chatMessages?.appendChild(thinkingDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  try {
+    const response = await getGroqChatResponse(text);
+    thinkingDiv.remove();
     addChatMessage("bot", response);
-  }, 600);
+  } catch (error) {
+    thinkingDiv.textContent = "Sorry, my brain is foggy. Check your connection.";
+    console.error("AI Error:", error);
+  }
 }
 
-function getAIResponse(query) {
-  const stocks = Object.values(state.livePrices);
+async function getGroqChatResponse(query) {
   const portfolio = Object.values(state.portfolio || {});
+  const watchlist = Object.values(state.watchlist || {});
   
-  // 1. Hyper-Detailed Portfolio Deep Dive
-  if (query.includes("analyze my portfolio") || query.includes("portfolio health") || query.includes("deep dive")) {
-    if (portfolio.length === 0) return "Your portfolio is empty. Add stocks to unlock deep AI insights!";
-    
-    let totalInvested = 0, totalCurrent = 0, gainers = 0, losers = 0;
-    const sectors = {};
-    let weakestStock = null;
-    let worstPnl = 0;
+  // Optimization: Only send relevant prices to stay under token limits
+  const relevantTickers = new Set([
+    ...portfolio.filter(p => p && p.ticker).map(p => p.ticker.replace(".", "_")),
+    ...watchlist.filter(w => w && w.ticker).map(w => w.ticker.replace(".", "_"))
+  ]);
+  
+  // Add stock mentioned in query
+  Object.keys(state.livePrices).forEach(ticker => {
+    const symbol = ticker.split("_")[0].toLowerCase();
+    if (query.toLowerCase().includes(symbol)) {
+      relevantTickers.add(ticker);
+    }
+  });
 
-    portfolio.forEach(p => {
-      const live = state.livePrices[p.ticker.replace(".","_")] || {price: p.buyPrice};
-      const invested = Number(p.qty) * Number(p.buyPrice);
-      const current = Number(p.qty) * Number(live.price);
-      const pnl = current - invested;
-      
-      totalInvested += invested;
-      totalCurrent += current;
-      if(pnl > 0) gainers++; else losers++;
-      
-      if(pnl < worstPnl) { worstPnl = pnl; weakestStock = p.ticker; }
-      
-      const sec = p.sector || "Other";
-      sectors[sec] = (sectors[sec] || 0) + current;
+  const filteredPrices = {};
+  relevantTickers.forEach(t => {
+    if (state.livePrices[t]) filteredPrices[t] = state.livePrices[t];
+  });
+
+  const news = state.news.slice(0, 5);
+  
+  const context = `
+    You are StockSense AI, a professional financial advisor.
+    USER PORTFOLIO: ${JSON.stringify(portfolio)}
+    RELEVANT PRICES: ${JSON.stringify(filteredPrices)}
+    LATEST NEWS: ${JSON.stringify(news)}
+    MARKET STATUS: ${state.marketStatus?.phase || 'OPEN'}
+    CURATED INTELLIGENCE SUGGESTIONS: ${JSON.stringify(state.curatedPicks || {})}
+    
+    Answer the user's question based on this data. If they ask about a stock in the curated recommendations (like Top Results Performers, Potential Future Stars, or Elite Dividend Yielders), give them a systematic and analytical explanation of why they are classified in that group. Always refer to this curated data to back up your suggestions.
+  `;
+
+  try {
+    const chatProxy = httpsCallable(functions, 'chat_proxy');
+    const result = await chatProxy({
+      model: GROQ_MODEL,
+      messages: [
+        { role: "system", content: context },
+        { role: "user", content: query }
+      ],
+      temperature: 0.6
     });
 
-    const pnlTotal = totalCurrent - totalInvested;
-    const pnlPct = (pnlTotal / totalInvested) * 100;
-    const diversificationScore = Math.min(10, Object.keys(sectors).length * 2);
-    
-    let report = `📊 DEEP DIVE ANALYSIS:\n`;
-    report += `• Returns: ${formatCurrency(pnlTotal)} (${pnlPct.toFixed(2)}%)\n`;
-    report += `• Risk Profile: ${gainers} Gainers vs ${losers} Losers. `;
-    report += (gainers > losers) ? "Strong momentum! " : "Portfolio is currently under pressure. ";
-    report += `\n• Diversification Score: ${diversificationScore}/10. `;
-    
-    if (diversificationScore < 6) report += "Caution: You are too concentrated in a few sectors. Spread into 3+ sectors to reduce risk. ";
-    
-    if (weakestStock) {
-      report += `\n• Weakest Link: ${weakestStock} is your biggest drag. Consider if the fundamental reason for holding still exists.`;
-    }
-
-    report += `\n\n💡 RECOMMENDATION: `;
-    if (pnlPct > 5) report += "To make this better, use 'Trailing Stop Losses' of 5% on your gainers to protect these profits while allowing more upside.";
-    else report += "To improve profitability, exit stocks with AI scores < 0.4 and re-allocate to 'Bullish' sector leaders.";
-    
-    return report;
+    if (result.data.error) throw new Error(result.data.error);
+    return result.data.choices[0].message.content;
+  } catch (err) {
+    console.warn("Cloud Function failed, falling back to local proxy...", err);
+    // Fallback to local Flask server if Cloud Function is not available
+    const response = await fetch("http://127.0.0.1:5000/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          { role: "system", content: context },
+          { role: "user", content: query }
+        ],
+        temperature: 0.6
+      })
+    });
+    const data = await response.json();
+    return data.choices[0].message.content;
   }
-
-  // 2. Profitability Strategy
-  if (query.includes("profitable") || query.includes("strategy") || query.includes("make money")) {
-    return "To maximize profitability with StockSense: \n1. Focus on 'Value Gems': Stocks with AI Scores > 0.70 AND P/E Ratios under 25. \n2. Sector Rotation: When the 'Average Move' on your dashboard is negative, move into defensive sectors like IT or Pharma. \n3. Risk Management: Never allocate more than 15% of your capital to a single stock.";
-  }
-
-  // 3. Valuation & AI Picks (Existing)
-  if(query.includes("valuation") || query.includes("pe ratio") || query.includes("p/e")) {
-    const cheap = stocks.filter(s => s.pe > 0 && s.pe < 25).slice(0, 3);
-    if(cheap.length > 0) {
-      return `Based on live valuations, ${cheap.map(s => s.ticker).join(", ")} are currently trading at a P/E below 25. This could indicate under-valuation.`;
-    }
-    return "Most stocks are currently trading at fair market valuations.";
-  }
-
-  if(query.includes("best") || query.includes("buy") || query.includes("suggest")) {
-    const top = Object.values(state.aiPicks || {}).sort((a,b) => b.ml - a.ml).slice(0, 2);
-    if(top.length > 0) {
-      return `My models highlight ${top.map(s => s.ticker).join(" and ")} as top technical picks.`;
-    }
-  }
-
-  const tickerMatch = stocks.find(s => query.includes(s.ticker.toLowerCase().split(".")[0]));
-  if(tickerMatch) {
-    const ml = state.aiPicks[tickerMatch.ticker.replace(".","_")]?.ml || "Neutral";
-    return `${tickerMatch.ticker} is at ${formatCurrency(tickerMatch.price)}. P/E: ${tickerMatch.pe || 'N/A'}. Trend: ${ml >= 0.7 ? 'Strongly Bullish' : (ml >= 0.55 ? 'Bullish' : 'Neutral')}.`;
-  }
-
-  return "I can analyze your 'portfolio health', suggest 'profitable strategies', or check stock valuations. What can I help with?";
 }
+
+// Heuristic AI removed in favor of Groq
 
 
 loginBtn?.addEventListener("click", async () => {
@@ -399,10 +459,139 @@ emailSignupBtn?.addEventListener("click", async () => {
   }
 });
 
-document.getElementById("guestLoginBtn")?.addEventListener("click", () => {
-  if (authGate) authGate.classList.add("hidden");
-  appShell?.classList.remove("hidden");
-  startListeners();
+document.getElementById("guestLoginBtn")?.addEventListener("click", async () => {
+  const gateAuthStatus = document.getElementById("gateAuthStatus");
+  if (gateAuthStatus) gateAuthStatus.textContent = "Entering dashboard...";
+  try {
+    await signInAnonymously(auth);
+  } catch (error) {
+    console.error("Guest login failed:", error);
+    if (authGate) authGate.classList.add("hidden");
+    appShell?.classList.remove("hidden");
+    startListeners();
+  }
+});
+
+function getExpectedResultsHTML(ticker) {
+  const safeKey = ticker.replace(".", "_");
+  const earning = state.earnings[safeKey];
+  const stock = state.stocks[safeKey] || {};
+  const aiPick = state.aiPicks[safeKey] || {};
+  
+  let html = `<div class="tooltip-details" style="font-family: inherit;">`;
+  if (earning) {
+    const formattedDate = new Date(earning.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    html += `
+      <div style="font-weight: 800; color: var(--info); margin-bottom: 8px; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 4px;">📅 Expected Results</div>
+      <div style="margin-bottom: 4px; font-size: 0.78rem;"><span class="muted">Release Date:</span> <strong style="color: #fff;">${formattedDate}</strong></div>
+      <div style="margin-bottom: 4px; font-size: 0.78rem;"><span class="muted">Revenue Est:</span> <strong style="color: #fff;">₹${formatVolume(earning.revenue_avg || 0)}</strong></div>
+      <div style="margin-bottom: 4px; font-size: 0.78rem;"><span class="muted">EPS Est:</span> <strong style="color: #fff;">${earning.earnings_avg || 'N/A'}</strong></div>
+      <div style="margin-bottom: 4px; font-size: 0.78rem;"><span class="muted">Expected Impact:</span> <span style="color: ${earning.expected_impact === 'High' ? 'var(--danger)' : 'var(--accent)'}; font-weight: 800;">${earning.expected_impact}</span></div>
+    `;
+  } else {
+    html += `
+      <div style="font-weight: 800; color: var(--accent); margin-bottom: 8px; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 4px;">📈 Technical Pulse</div>
+      <div style="margin-bottom: 4px; font-size: 0.78rem;"><span class="muted">Trend Score:</span> <strong style="color: var(--accent);">${aiPick.score || stock.ml || 'N/A'}/100</strong></div>
+      <div style="margin-bottom: 4px; font-size: 0.78rem;"><span class="muted">Fund Quality:</span> <strong style="color: var(--info);">${aiPick.quality_score || 'N/A'}/100</strong></div>
+      <div style="margin-bottom: 4px; font-size: 0.78rem;"><span class="muted">Support:</span> <strong style="color: #fff;">₹${stock.sup || 'N/A'}</strong></div>
+      <div style="margin-bottom: 4px; font-size: 0.78rem;"><span class="muted">Resistance:</span> <strong style="color: #fff;">₹${stock.res || 'N/A'}</strong></div>
+    `;
+  }
+  html += `
+    <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 8px; padding-top: 6px; font-size: 0.65rem; color: var(--muted); text-align: center; font-style: italic;">
+      Click/Tap for source & full analysis
+    </div>
+  </div>`;
+  return html;
+}
+
+window.showStockDetails = (ticker) => {
+  const modal = document.getElementById("stockDetailsModal");
+  if (!modal) return;
+
+  const safeKey = ticker.replace(".", "_");
+  const aiPick = state.aiPicks[safeKey] || {};
+  const stock = state.stocks[safeKey] || {};
+
+  const nameEl = document.getElementById("details-modal-name");
+  const tickerEl = document.getElementById("details-modal-ticker");
+  const sectorEl = document.getElementById("details-modal-sector");
+  const trendEl = document.getElementById("details-modal-trend-val");
+  const qualityEl = document.getElementById("details-modal-quality-val");
+  const supportEl = document.getElementById("details-modal-support");
+  const resistanceEl = document.getElementById("details-modal-resistance");
+  const volatilityEl = document.getElementById("details-modal-volatility");
+  const rangeEl = document.getElementById("details-modal-52w");
+  const signalsEl = document.getElementById("details-modal-signals");
+  const jumpBtn = document.getElementById("btn-details-jump");
+  const sourceBtn = document.getElementById("btn-details-source");
+
+  // Earnings details elements
+  const earningContainer = document.getElementById("details-modal-earnings-container");
+  const earningDateEl = document.getElementById("details-modal-earnings-date");
+  const earningImpactEl = document.getElementById("details-modal-earnings-impact");
+  const earningRevEl = document.getElementById("details-modal-earnings-rev");
+  const earningEpsEl = document.getElementById("details-modal-earnings-eps");
+
+  if (nameEl) nameEl.textContent = stock.name || aiPick.ticker || ticker;
+  if (tickerEl) tickerEl.textContent = ticker;
+  if (sectorEl) sectorEl.textContent = stock.sector || aiPick.sector || "Equity Market Asset";
+  if (trendEl) trendEl.textContent = aiPick.score || stock.ml || 0;
+  if (qualityEl) qualityEl.textContent = aiPick.quality_score || 0;
+  
+  if (supportEl) supportEl.textContent = stock.sup ? `₹${stock.sup}` : "₹" + ((stock.price || 0) * 0.95).toFixed(2);
+  if (resistanceEl) resistanceEl.textContent = stock.res ? `₹${stock.res}` : "₹" + ((stock.price || 0) * 1.05).toFixed(2);
+  if (volatilityEl) volatilityEl.textContent = stock.volatility ? `${stock.volatility}%` : (aiPick.volatility ? `${aiPick.volatility}%` : "N/A");
+  
+  const low52 = stock.w52_low || aiPick.w52_low || (stock.price ? stock.price * 0.8 : null);
+  const high52 = stock.w52_high || aiPick.w52_high || (stock.price ? stock.price * 1.2 : null);
+  if (rangeEl) rangeEl.textContent = (low52 && high52) ? `₹${low52.toFixed(2)} - ₹${high52.toFixed(2)}` : "N/A";
+
+  // Expected Earnings display logic
+  const earning = state.earnings[safeKey];
+  if (earning && earningContainer) {
+    earningContainer.classList.remove("hidden");
+    if (earningDateEl) earningDateEl.textContent = new Date(earning.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    if (earningImpactEl) {
+      earningImpactEl.textContent = earning.expected_impact;
+      earningImpactEl.style.color = earning.expected_impact === "High" ? "var(--danger)" : "var(--accent)";
+    }
+    if (earningRevEl) earningRevEl.textContent = `₹${formatVolume(earning.revenue_avg || 0)}`;
+    if (earningEpsEl) earningEpsEl.textContent = earning.earnings_avg || 'N/A';
+  } else if (earningContainer) {
+    earningContainer.classList.add("hidden");
+  }
+
+  if (signalsEl) {
+    const reasons = aiPick.reasons || stock.signals || ["Technical Alignment"];
+    signalsEl.innerHTML = reasons.map(r => `
+      <span class="sig sig-b" style="font-size: 0.72rem; padding: 4px 10px; border-radius: 6px; background: rgba(0, 255, 163, 0.08); color: var(--accent); border: 1px solid rgba(0, 255, 163, 0.15);">${r}</span>
+    `).join("");
+  }
+
+  if (jumpBtn) {
+    jumpBtn.onclick = () => {
+      modal.classList.add("hidden");
+      window.jumpToStock(ticker);
+    };
+  }
+
+  if (sourceBtn) {
+    sourceBtn.href = `https://finance.yahoo.com/quote/${ticker}`;
+  }
+
+  modal.classList.remove("hidden");
+};
+
+document.getElementById("btn-details-close")?.addEventListener("click", () => {
+  document.getElementById("stockDetailsModal")?.classList.add("hidden");
+});
+document.getElementById("btn-details-cancel")?.addEventListener("click", () => {
+  document.getElementById("stockDetailsModal")?.classList.add("hidden");
+});
+document.getElementById("btn-suggest-more")?.addEventListener("click", () => {
+  state.aiPicksLimit += 4;
+  renderAIPicks();
 });
 
 logoutBtn?.addEventListener("click", async () => {
@@ -569,6 +758,22 @@ document.getElementById("btn-tx-confirm")?.addEventListener("click", async () =>
   }
 });
 
+// Reset Portfolio Logic
+window.resetPortfolio = async function() {
+  if (!state.user) return;
+  if (!confirm("Are you sure you want to reset your portfolio and funds to ₹2,00,000? This will delete all current holdings.")) return;
+
+  try {
+    await update(ref(db, `users/${state.user.uid}/profile`), { availableBalance: 200000 });
+    await set(ref(db, `users/${state.user.uid}/portfolio`), null);
+    await set(ref(db, `users/${state.user.uid}/transactions`), null);
+    alert("Portfolio reset to ₹2,00,000 successfully.");
+  } catch (err) {
+    console.error("Reset failed:", err);
+    alert("Failed to reset portfolio.");
+  }
+};
+
 window.requestAITrain = async function(ticker) {
   if (!state.user) {
     alert("Log in first to request AI training.");
@@ -592,9 +797,12 @@ window.requestAITrain = async function(ticker) {
 
 
 
-document.querySelectorAll(".nav-pill").forEach((button) => {
+document.querySelectorAll(".nav-pill, .mobile-nav-item").forEach((button) => {
   button.addEventListener("click", (e) => {
-    e.preventDefault();
+    // Check if it's an anchor tag before preventing default
+    if (button.tagName === "A" && button.getAttribute("href")?.startsWith("#")) {
+      e.preventDefault();
+    }
     activateTab(button.dataset.tab);
   });
 });
@@ -640,12 +848,15 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 function activateTab(tabName) {
-  document.querySelectorAll(".nav-pill").forEach((button) => {
+  document.querySelectorAll(".nav-pill, .mobile-nav-item, .drawer-menu-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.tab === tabName);
   });
 
   document.querySelectorAll(".page-section").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `section-${tabName}`);
+    if (panel.id === `section-${tabName}`) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   });
 }
 
@@ -686,6 +897,16 @@ function startListeners() {
     renderIndexBar(indices);
   });
 
+  onValue(ref(db, "ai_market_suggestion"), (snapshot) => {
+    const data = snapshot.val() || null;
+    renderAIMarketSuggestion(data);
+  });
+
+  onValue(ref(db, "market_intelligence/curated_picks"), (snapshot) => {
+    state.curatedPicks = snapshot.val() || null;
+    renderCuratedPicks();
+  });
+
   if (state.user) {
     onValue(ref(db, `users/${state.user.uid}/portfolio`), (snapshot) => {
       state.portfolio = snapshot.val() || {};
@@ -702,8 +923,8 @@ function startListeners() {
     onValue(ref(db, `users/${state.user.uid}/profile`), (snapshot) => {
       state.profile = snapshot.val() || {};
       if (state.profile.availableBalance === undefined) {
-        state.profile.availableBalance = 1000000000; // Unlimited Mode
-        update(ref(db, `users/${state.user.uid}/profile`), { availableBalance: 1000000000 });
+        state.profile.availableBalance = 200000; // Default: 2 Lakhs
+        update(ref(db, `users/${state.user.uid}/profile`), { availableBalance: 200000 });
       }
       renderAvailableBalance();
     });
@@ -720,6 +941,21 @@ function startListeners() {
     const sent = snapshot.val() || { sentiment: "Neutral" };
     const summary = document.getElementById("marketSummary");
     if (summary) summary.textContent = `Sense: ${sent.sentiment} | Nifty: ${sent.change_pct?.toFixed(2) || 0}%`;
+  });
+
+  onValue(ref(db, "upcoming_results"), (snapshot) => {
+    state.earnings = snapshot.val() || {};
+    renderEarnings();
+  });
+
+  onValue(ref(db, "market_intelligence/fii_dii"), (snapshot) => {
+    state.fiidii = snapshot.val() || [];
+    renderFIIDII();
+  });
+
+  onValue(ref(db, "market_intelligence/commodities"), (snapshot) => {
+    const commodities = snapshot.val() || {};
+    renderCommodities(commodities);
   });
 }
 
@@ -852,7 +1088,9 @@ function renderAvailableBalance() {
 function renderTransactions() {
   const container = document.getElementById("transactions-container-v2");
   if (!container) return;
-  const txs = Object.values(state.transactions || {}).sort((a, b) => b.timestamp - a.timestamp);
+  const txs = Object.values(state.transactions || {})
+    .filter(t => t && t.ticker) // Added safety filter
+    .sort((a, b) => b.timestamp - a.timestamp);
   
   if (txs.length === 0) {
     container.innerHTML = '<p class="muted" style="text-align: center; padding: 20px;">No trades executed yet.</p>';
@@ -1132,6 +1370,13 @@ function renderAdvancedAIInsights(portfolio) {
 
 
 function setUserUI(user, profilePrefs) {
+  const drawerProfileInfo = document.getElementById("drawer-profile-info");
+  const drawerProfilePic = document.getElementById("drawer-profile-pic");
+  const drawerProfileName = document.getElementById("drawer-profile-name");
+  const drawerProfileEmail = document.getElementById("drawer-profile-email");
+  const drawerLogoutLink = document.getElementById("mobile-logout-link");
+  const drawerLoginLink = document.getElementById("mobile-login-link");
+
   if (!user) {
     if (profileName) profileName.textContent = "Guest";
     if (profileEmail) profileEmail.textContent = "Not logged in";
@@ -1142,6 +1387,10 @@ function setUserUI(user, profilePrefs) {
     if (displayNameInput) displayNameInput.value = "";
     if (themeAccentInput) themeAccentInput.value = "emerald";
     applyAccent("emerald");
+
+    if (drawerProfileInfo) drawerProfileInfo.style.display = "none";
+    if (drawerLogoutLink) drawerLogoutLink.style.display = "none";
+    if (drawerLoginLink) drawerLoginLink.style.display = "flex";
     return;
   }
 
@@ -1158,11 +1407,36 @@ function setUserUI(user, profilePrefs) {
   if (profilePic) profilePic.src = photo;
   if (headerProfilePic) headerProfilePic.src = photo;
   applyAccent(accent);
+
+  if (drawerProfileInfo) drawerProfileInfo.style.display = "flex";
+  if (drawerProfilePic) drawerProfilePic.src = photo;
+  if (drawerProfileName) drawerProfileName.textContent = preferredName;
+  if (drawerProfileEmail) drawerProfileEmail.textContent = user.email || "";
+  if (drawerLogoutLink) drawerLogoutLink.style.display = "flex";
+  if (drawerLoginLink) drawerLoginLink.style.display = "none";
 }
 
 function applyAccent(accent) {
   document.body.dataset.accent = accent;
 }
+
+window.setViewMode = function(mode) {
+  document.body.classList.remove("force-desktop", "force-mobile");
+  document.querySelectorAll("[id^='mode-']").forEach(btn => btn.classList.remove("active"));
+  
+  if (mode === "desktop") {
+    document.body.classList.add("force-desktop");
+    document.getElementById("mode-desktop")?.classList.add("active");
+  } else if (mode === "mobile") {
+    document.body.classList.add("force-mobile");
+    document.getElementById("mode-mobile")?.classList.add("active");
+  } else {
+    document.getElementById("mode-auto")?.classList.add("active");
+  }
+  
+  localStorage.setItem("stocksense_view_mode", mode);
+  window.dispatchEvent(new Event('resize'));
+};
 
 function renderDashboard() {
   const merged = Object.keys(state.stocks).map((ticker) => ({
@@ -1193,6 +1467,14 @@ function renderDashboard() {
       liveMerged = liveMerged.filter(s => (s.change_pct || 0) > 0);
     } else if (query === "<0%") {
       liveMerged = liveMerged.filter(s => (s.change_pct || 0) < 0);
+    } else if (query === "<-2%") {
+      liveMerged = liveMerged.filter(s => (s.change_pct || 0) < -2);
+    } else if (query === "-2to0%") {
+      liveMerged = liveMerged.filter(s => (s.change_pct || 0) >= -2 && (s.change_pct || 0) < 0);
+    } else if (query === "0to2%") {
+      liveMerged = liveMerged.filter(s => (s.change_pct || 0) >= 0 && (s.change_pct || 0) <= 2);
+    } else if (query === ">2%") {
+      liveMerged = liveMerged.filter(s => (s.change_pct || 0) > 2);
     } else {
       liveMerged = liveMerged.filter(s => s.ticker.toLowerCase().includes(query));
     }
@@ -1375,13 +1657,77 @@ function renderLive(stocks) {
   }
 }
 
+function getNewsSentiment(n) {
+  if (n.sentiment && (n.sentiment === 'Bullish' || n.sentiment === 'Bearish')) return n.sentiment;
+  
+  const title = n.title || "";
+  const summary = n.summary || "";
+  const text = (title + " " + summary).toLowerCase();
+  
+  const bullishWords = [
+    'surge', 'jump', 'gain', 'profit', 'beat', 'growth', 'bullish', 
+    'positive', 'rally', 'upgrade', 'climb', 'soar', 'strong', 'higher',
+    'record high', 'expand', 'exceed', 'outperform', 'recovery', 'revival',
+    'dividend', 'acquisition', 'partner', 'success', 'grew', 'doubled', 'tripled',
+    'upbeat', 'high', 'optimistic'
+  ];
+  
+  const bearishWords = [
+    'drop', 'fall', 'loss', 'crash', 'miss', 'slump', 'bearish',
+    'negative', 'downgrade', 'decline', 'plunge', 'weak', 'lower', 'hit',
+    'slashed', 'shrink', 'underperform', 'deficit', 'debt', 'fine',
+    'penalty', 'lawsuit', 'investigation', 'scam', 'fraud', 'crisis',
+    'fell', 'slums', 'recession', 'sluggish', 'sink'
+  ];
+  
+  let bullScore = 0;
+  let bearScore = 0;
+  
+  bullishWords.forEach(w => {
+    if (text.includes(w)) bullScore++;
+  });
+  
+  bearishWords.forEach(w => {
+    if (text.includes(w)) bearScore++;
+  });
+  
+  if (bullScore > bearScore) return 'Bullish';
+  if (bearScore > bullScore) return 'Bearish';
+  return 'Neutral';
+}
+
 function renderNews() {
   if (!newsGrid) return;
   
   const query = newsInput?.value.toLowerCase().trim() || "";
   let filtered = state.news || [];
+
+  // Populate Breaking News Ticker
+  const tickerContent = document.getElementById("ticker-news-content");
+  if (tickerContent && filtered.length > 0) {
+    tickerContent.innerHTML = filtered.slice(0, 10).map(n => `
+      <div class="ticker-news-item" onclick="window.open('${n.link}', '_blank')">
+        <span class="dot"></span>
+        ${n.title}
+      </div>
+    `).join("");
+  }
+
+  // Filter by Category
+  if (state.newsCategory === 'Bullish') {
+    filtered = filtered.filter(item => getNewsSentiment(item) === 'Bullish');
+  } else if (state.newsCategory === 'Bearish') {
+    filtered = filtered.filter(item => getNewsSentiment(item) === 'Bearish');
+  } else if (state.newsCategory !== 'all') {
+    filtered = filtered.filter(item => item.category === state.newsCategory);
+  }
+
+  // Filter by Search Query
   if (query) {
-    filtered = filtered.filter(item => (item.title || "").toLowerCase().includes(query) || (item.source || "").toLowerCase().includes(query));
+    filtered = filtered.filter(item => 
+      (item.title || "").toLowerCase().includes(query) || 
+      (item.source || "").toLowerCase().includes(query)
+    );
   }
 
   if (!filtered.length) {
@@ -1398,18 +1744,36 @@ function renderNews() {
                         (timeAgo < 60 ? `${timeAgo}${state.language === 'hi' ? ' मिनट पहले' : 'm ago'}` : 
                         `${Math.floor(timeAgo/60)}${state.language === 'hi' ? ' घंटे पहले' : 'h ago'}`);
     
+    // Simple sentiment detection for visual flair
+    const sentiment = getNewsSentiment(n);
+    const isPositive = sentiment === 'Bullish';
+    const isNegative = sentiment === 'Bearish';
+    const sentimentCls = isPositive ? 'positive' : (isNegative ? 'negative' : '');
+    const sentimentLabel = isPositive ? (state.language === 'hi' ? 'सकारात्मक' : 'BULLISH') : 
+                          (isNegative ? (state.language === 'hi' ? 'नकारात्मक' : 'BEARISH') : 
+                          (state.language === 'hi' ? 'तटस्थ' : 'NEUTRAL'));
+
     return `
       <article class="news-card-premium" onclick="window.open('${n.link}', '_blank')">
         <div class="news-content">
           <div class="news-meta">
-            <span class="news-source">${n.source || 'Finance'}</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="news-source">${n.source || 'Finance'}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="color: var(--muted);"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+            </div>
             <span class="news-time"><span class="live-indicator"></span>${timeDisplay}</span>
           </div>
-          <h3 class="news-title">${n.title}</h3>
+          <h3 class="news-title ${sentimentCls}">${n.title}</h3>
           <p class="news-excerpt">${n.summary || (state.language === 'hi' ? 'इस बाज़ार घटना पर पूरी इंटेलिजेंस रिपोर्ट पढ़ने के लिए क्लिक करें।' : 'Click to read full intelligence report on this market event.')}</p>
           <div class="news-footer">
-            <span class="news-tag">${state.language === 'hi' ? 'बाज़ार अंतर्दृष्टि' : 'MARKET INSIGHT'}</span>
-            <span class="read-more">${state.language === 'hi' ? 'पूरी रिपोर्ट पढ़ें' : 'Read Full Report'} →</span>
+            <div style="display: flex; gap: 8px;">
+              <span class="news-tag" style="background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px;">${n.category === 'Global Market' ? (state.language === 'hi' ? 'वैश्विक' : 'GLOBAL') : (state.language === 'hi' ? 'भारतीय' : 'INDIAN')}</span>
+              <span class="news-tag ${sentimentCls}" style="opacity: 0.8;">${sentimentLabel}</span>
+            </div>
+            <div class="news-action-btn">
+              ${state.language === 'hi' ? 'स्रोत पर जाएँ' : 'Go to Source'} 
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left: 4px;"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
           </div>
         </div>
       </article>
@@ -1441,38 +1805,161 @@ function renderAIPicks() {
     return;
   }
 
-  aiGrid.innerHTML = picks
-    .sort((a, b) => b.score - a.score)
+  const sortedPicks = picks.sort((a, b) => b.score - a.score);
+  const visiblePicks = sortedPicks.slice(0, state.aiPicksLimit);
+
+  aiGrid.innerHTML = visiblePicks
     .map((stock) => {
       const labelCls = (stock.label || "").toLowerCase().replace(" ", "-");
       const score = stock.score || 0;
-      const reasons = Array.isArray(stock.reasons) ? stock.reasons.map(r => `<span class="sig sig-b">${r}</span>`).join("") : "";
+      const qScore = stock.quality_score || 0;
+
+      let labelColor = "var(--accent)";
+      if (labelCls.includes("avoid") || labelCls.includes("underperform")) labelColor = "var(--danger)";
+      else if (labelCls.includes("hold") || labelCls.includes("watch")) labelColor = "var(--warning)";
 
       return `
-        <article class="price-card" style="border-left: 4px solid var(--accent); cursor: pointer;" onclick="window.jumpToStock('${stock.ticker}')">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <p class="eyebrow">🤖 AI Intelligence</p>
-            <span class="ai-label ${labelCls}">${stock.label || "Neutral"}</span>
+        <article class="price-card hover-glow results-tooltip-container" style="border-left: 4px solid ${labelColor}; cursor: pointer; transition: all 0.2s ease; padding: 14px; min-height: auto; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 8px;" onclick="window.showStockDetails('${stock.ticker}')">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span class="ai-label ${labelCls}" style="font-size: 0.6rem; padding: 2px 6px; border-radius: 4px;">${stock.label || "Neutral"}</span>
+            <span style="font-size: 0.65rem; color: var(--muted); font-weight: 600;">Confidence: ${stock.confidence}%</span>
           </div>
-          <h4 style="margin-top: 8px;">${stock.ticker}</h4>
-          <div style="margin: 12px 0;">
-            <div style="font-size: 0.75rem; color: var(--muted); margin-bottom: 4px;">Composite Score</div>
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <div style="flex: 1; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden;">
-                <div style="width: ${score}%; height: 100%; background: var(--accent); box-shadow: 0 0 10px var(--accent);"></div>
-              </div>
-              <span style="font-size: 1.2rem; font-weight: 900; color: var(--accent);">${score}</span>
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <h4 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #fff;">${stock.ticker.split(".")[0]}</h4>
+            <span style="font-size: 0.65rem; color: var(--muted); font-weight: 600;">NSE Listing</span>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0;">
+            <div style="background: rgba(255,255,255,0.02); padding: 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+              <div style="font-size: 0.6rem; color: var(--muted); text-transform: uppercase;">Trend</div>
+              <div style="font-size: 0.85rem; font-weight: 700; color: var(--accent); margin-top: 2px;">${score}/100</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.02); padding: 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+              <div style="font-size: 0.6rem; color: var(--muted); text-transform: uppercase;">Quality</div>
+              <div style="font-size: 0.85rem; font-weight: 700; color: var(--info); margin-top: 2px;">${qScore}/100</div>
             </div>
           </div>
-          <div class="pc-sigs" style="margin-top: 8px;">${reasons}</div>
-          <div style="margin-top: 16px; font-size: 0.75rem; color: var(--muted); display: flex; justify-content: space-between;">
-            <span>Confidence: ${stock.confidence}%</span>
-            <span style="color: var(--accent);">Analysis Details →</span>
+          
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.04); padding-top: 8px; margin-top: 4px;">
+            <span style="font-size: 0.65rem; color: var(--muted); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 140px;">${stock.reasons?.[0] || 'Technical Reversal'}</span>
+            <span style="color: var(--accent); font-weight: 700; font-size: 0.65rem; display: flex; align-items: center; gap: 2px; flex-shrink: 0;">DETAILS &rarr;</span>
           </div>
+          <div class="tooltip-content">${getExpectedResultsHTML(stock.ticker)}</div>
         </article>
       `;
     })
     .join("");
+
+  const suggestMoreBtn = document.getElementById("btn-suggest-more");
+  if (suggestMoreBtn) {
+    if (state.aiPicksLimit >= sortedPicks.length) {
+      suggestMoreBtn.style.display = "none";
+    } else {
+      suggestMoreBtn.style.display = "inline-flex";
+    }
+  }
+}
+
+function renderAIMarketSuggestion(data) {
+  const container = document.getElementById("ai-market-pulse-container");
+  if (!container || !data) return;
+
+  const colorMap = {
+    green: "var(--accent)",
+    red: "var(--danger)",
+    yellow: "var(--warning)"
+  };
+  const bgColorMap = {
+    green: "rgba(0, 255, 163, 0.1)",
+    red: "rgba(255, 77, 77, 0.1)",
+    yellow: "rgba(255, 184, 0, 0.1)"
+  };
+
+  const statusMap = {
+    "Market is currently Bullish.": "BULLISH",
+    "Market is currently Bearish.": "BEARISH",
+    "Market is currently Neutral.": "NEUTRAL"
+  };
+
+  const text = statusMap[data.pulse] || data.pulse.replace("Market is currently ", "").replace(".", "").toUpperCase();
+  const color = colorMap[data.color] || "var(--accent)";
+  const bgColor = bgColorMap[data.color] || "rgba(0, 255, 163, 0.1)";
+
+  container.innerHTML = `
+    <div class="hover-glow" style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 6px 14px; border-radius: 99px; backdrop-filter: blur(10px); box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+      <span style="font-size: 0.65rem; color: var(--muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Market Pulse:</span>
+      <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: ${color}; box-shadow: 0 0 10px ${color};"></span>
+      <span style="font-size: 0.72rem; font-weight: 800; color: ${color}; letter-spacing: 0.5px;">${text}</span>
+    </div>
+  `;
+}
+
+function renderCuratedPicks() {
+  const bestList = document.getElementById("bestPerformersList");
+  const potentialList = document.getElementById("potentialStarsList");
+  const divList = document.getElementById("dividendStarsList");
+
+  const data = state.curatedPicks;
+  if (!data) return;
+
+  if (bestList && data.best_performers) {
+    if (!data.best_performers.length) {
+      bestList.innerHTML = `<div class="empty-state" style="padding: 16px;">No performers data.</div>`;
+    } else {
+      bestList.innerHTML = data.best_performers.map(item => `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: rgba(255,255,255,0.02); border-radius: 10px; border: 1px solid rgba(255,255,255,0.04); cursor: pointer; transition: all 0.2s;" class="hover-scale results-tooltip-container" onclick="window.showStockDetails('${item.ticker}')">
+          <div style="min-width: 0; flex: 1; padding-right: 8px;">
+            <div style="font-weight: 700; font-size: 0.9rem; color: #fff;">${item.ticker.split(".")[0]}</div>
+            <div style="font-size: 0.7rem; color: var(--muted); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${item.name}</div>
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
+            <span class="ctrl-badge" style="background: rgba(0, 255, 163, 0.1); color: var(--accent); font-size: 0.68rem; border-color: rgba(0, 255, 163, 0.2);">Rev: +${item.revenue_growth}%</span>
+            <span class="ctrl-badge" style="background: rgba(96, 165, 250, 0.1); color: var(--info); font-size: 0.68rem; border-color: rgba(96, 165, 250, 0.2);">Margin: ${item.margin}%</span>
+          </div>
+          <div class="tooltip-content">${getExpectedResultsHTML(item.ticker)}</div>
+        </div>
+      `).join("");
+    }
+  }
+
+  if (potentialList && data.potential_stars) {
+    if (!data.potential_stars.length) {
+      potentialList.innerHTML = `<div class="empty-state" style="padding: 16px;">No future potential data.</div>`;
+    } else {
+      potentialList.innerHTML = data.potential_stars.map(item => `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: rgba(255,255,255,0.02); border-radius: 10px; border: 1px solid rgba(255,255,255,0.04); cursor: pointer; transition: all 0.2s;" class="hover-scale results-tooltip-container" onclick="window.showStockDetails('${item.ticker}')">
+          <div style="min-width: 0; flex: 1; padding-right: 8px;">
+            <div style="font-weight: 700; font-size: 0.9rem; color: #fff;">${item.ticker.split(".")[0]}</div>
+            <div style="font-size: 0.7rem; color: var(--muted); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">Target: ₹${item.target_price} (₹${item.current_price})</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0;">
+            <span class="ctrl-badge" style="background: rgba(0, 255, 163, 0.15); color: var(--accent); font-size: 0.72rem; font-weight: 700; border-color: rgba(0, 255, 163, 0.3);">+${item.upside}%</span>
+            <span style="font-size: 0.62rem; color: var(--info); font-weight: 600;">${item.rating}</span>
+          </div>
+          <div class="tooltip-content">${getExpectedResultsHTML(item.ticker)}</div>
+        </div>
+      `).join("");
+    }
+  }
+
+  if (divList && data.dividend_stars) {
+    if (!data.dividend_stars.length) {
+      divList.innerHTML = `<div class="empty-state" style="padding: 16px;">No dividend data.</div>`;
+    } else {
+      divList.innerHTML = data.dividend_stars.map(item => `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: rgba(255,255,255,0.02); border-radius: 10px; border: 1px solid rgba(255,255,255,0.04); cursor: pointer; transition: all 0.2s;" class="hover-scale results-tooltip-container" onclick="window.showStockDetails('${item.ticker}')">
+          <div style="min-width: 0; flex: 1; padding-right: 8px;">
+            <div style="font-weight: 700; font-size: 0.9rem; color: #fff;">${item.ticker.split(".")[0]}</div>
+            <div style="font-size: 0.7rem; color: var(--muted); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${item.name}</div>
+          </div>
+          <div style="flex-shrink: 0;">
+            <span class="ctrl-badge" style="background: rgba(255, 184, 0, 0.15); color: var(--warning); font-size: 0.72rem; font-weight: 700; border-color: rgba(255, 184, 0, 0.3);">${item.yield}% Yield</span>
+          </div>
+          <div class="tooltip-content">${getExpectedResultsHTML(item.ticker)}</div>
+        </div>
+      `).join("");
+    }
+  }
 }
 
 window.jumpToStock = (ticker) => {
@@ -1707,6 +2194,22 @@ function renderMarketChart(stocks) {
         responsive: true,
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
+        onHover: (event, chartElement) => {
+          event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
+        },
+        onClick: (event, elements) => {
+          if (elements.length > 0) {
+            const index = elements[0].index;
+            const label = data.labels[index];
+            const typeMap = {
+              'Deep Red': '<-2%',
+              'Red': '-2to0%',
+              'Green': '0to2%',
+              'Deep Green': '>2%'
+            };
+            window.filterLive(typeMap[label]);
+          }
+        },
         scales: {
           x: { grid: { display: false }, ticks: { color: '#9ca3af' } },
           y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } }
@@ -1735,6 +2238,7 @@ window.filterLive = function(type) {
   if (searchInput) {
     if (type === 'gainers') searchInput.value = ">0%";
     else if (type === 'losers') searchInput.value = "<0%";
+    else searchInput.value = type; // Support range strings directly
     renderDashboard();
   }
   setTimeout(() => {
@@ -1742,9 +2246,9 @@ window.filterLive = function(type) {
   }, 100);
 };
 
-window.generateAIReport = function() {
+window.generateAIReport = async function() {
   try {
-    console.log("🏥 AI Portfolio Doctor Activated");
+    console.log("🏥 AI Portfolio Doctor Activated (Real-Time Mode)");
     const portfolio = Object.values(state.portfolio || {});
     const panel = document.getElementById("portfolio-doctor-panel");
     const scoreEl = document.getElementById("health-score-value");
@@ -1753,11 +2257,6 @@ window.generateAIReport = function() {
     const prescriptionEl = document.getElementById("doctor-prescription");
     const alertsEl = document.getElementById("doctor-alerts");
 
-    if (!panel) {
-      console.error("Doctor panel not found");
-      return;
-    }
-
     if (portfolio.length === 0) {
       alert("Please add stocks to your portfolio first.");
       return;
@@ -1765,99 +2264,450 @@ window.generateAIReport = function() {
 
     panel.classList.remove("hidden");
     panel.style.display = "block";
+    panel.style.opacity = "0.7";
+    diagnosisEl.textContent = "AI is examining your holdings...";
     
-    // 1. Core Calculations
-    let totalInvested = 0, totalCurrent = 0, winners = 0;
-    const sectors = {};
-    let leader = { ticker: 'N/A', gain: -Infinity };
-    let laggard = { ticker: 'N/A', gain: Infinity };
-
+    // 1. Calculate Core Metrics for AI context
+    let totalInvested = 0, totalCurrent = 0;
     portfolio.forEach(p => {
-      try {
-        const live = state.livePrices[p.ticker.replace(".","_")] || {price: p.buyPrice};
-        const invested = Number(p.qty) * Number(p.buyPrice);
-        const current = Number(p.qty) * Number(live.price);
-        const pnl = current - invested;
-        const pnlPct = invested > 0 ? (pnl / invested) * 100 : 0;
-
-        totalInvested += invested;
-        totalCurrent += current;
-        if (pnl > 0) winners++;
-        
-        if (pnlPct > leader.gain) leader = { ticker: p.ticker, gain: pnlPct };
-        if (pnlPct < laggard.gain) laggard = { ticker: p.ticker, gain: pnlPct };
-
-        const sec = p.sector || "Other";
-        sectors[sec] = (sectors[sec] || 0) + current;
-      } catch (e) { console.warn("Error processing stock:", p.ticker, e); }
+      if (!p || !p.ticker) return; // Safety check
+      const live = state.livePrices[p.ticker.replace(".","_")] || {price: p.buyPrice};
+      totalInvested += Number(p.qty) * Number(p.buyPrice);
+      totalCurrent += Number(p.qty) * Number(live.price);
     });
-
-    if (totalInvested === 0) {
-      alert("Portfolio valuation error. Please check your holdings.");
-      return;
-    }
 
     const overallPnlPct = ((totalCurrent - totalInvested) / totalInvested) * 100;
     
-    // 2. Intelligence Logic
-    const sectorKeys = Object.keys(sectors);
-    const diversification = sectorKeys.length;
-    const topSector = sectorKeys.length > 0 ? sectorKeys[0] : "None";
-    const healthScore = Math.round(
-      Math.min(100, (winners / portfolio.length * 40) + (Math.min(5, diversification) * 10) + (overallPnlPct > 0 ? 10 : 0) + (portfolio.length > 3 ? 10 : 0))
-    );
+    // 2. Call Groq for Intelligence
+    const reportQuery = `
+      As a Senior Institutional Analyst, perform a deep-dive audit of this portfolio:
+      PORTFOLIO: ${JSON.stringify(portfolio)}
+      LIVE OVERALL PNL: ${overallPnlPct.toFixed(2)}%
+      MARKET CONTEXT: ${JSON.stringify(state.news.slice(0,5))}
+      
+      Requirements:
+      1. Overall Health Score (0-100).
+      2. Macro Diagnosis: High-level overview of portfolio stability and risk.
+      3. Stock-Wise Analysis: For EACH holding in the portfolio, provide a 1-sentence "Analyst Take" (Technical/Fundamental outlook).
+      4. Actionable Prescription: 3 specific strategic moves.
+      
+      Return ONLY a valid JSON object: 
+      {
+        "healthScore": number, 
+        "diagnosis": "string", 
+        "stockAnalysis": [{"ticker": "string", "take": "string"}],
+        "prescription": "string"
+      }
+    `;
+
+    let resultData;
+    try {
+      const groqRes = await fetch("http://127.0.0.1:5000/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [{ role: "user", content: reportQuery }],
+          response_format: { type: "json_object" }
+        })
+      });
+      const data = await groqRes.json();
+      resultData = data;
+    } catch (e) {
+      // Try secondary local proxy if primary fails
+      const groqRes2 = await fetch("http://localhost:5000/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [{ role: "user", content: reportQuery }],
+          response_format: { type: "json_object" }
+        })
+      });
+      resultData = await groqRes2.json();
+    }
+
+    if (!resultData || !resultData.choices) {
+      console.error("AI API Error:", resultData);
+      const errorMsg = resultData?.error?.message || "Invalid AI response format";
+      throw new Error(`AI API Error: ${errorMsg}`);
+    }
+
+    let rawContent = resultData.choices[0].message.content;
+    // Strip markdown code blocks if present
+    if (rawContent.includes("```")) {
+      rawContent = rawContent.replace(/```json/g, "").replace(/```/g, "").trim();
+    }
+    
+    const ai = JSON.parse(rawContent);
 
     // 3. UI Updates
+    panel.style.opacity = "1";
     if (scoreEl) {
-      scoreEl.textContent = healthScore;
-      scoreEl.style.color = healthScore > 70 ? '#00ffa3' : (healthScore > 40 ? '#fbbf24' : '#ef4444');
+      scoreEl.textContent = ai.healthScore;
+      scoreEl.style.color = ai.healthScore > 70 ? '#00ffa3' : (ai.healthScore > 40 ? '#fbbf24' : '#ef4444');
     }
 
     if (metricsGrid) {
       metricsGrid.innerHTML = `
         <div class="stat-item" style="background: rgba(255,255,255,0.01); padding: 12px; border-radius: 8px;">
-          <span class="muted" style="font-size: 0.7rem;">Market Leader</span>
-          <div style="font-weight: 700; color: #00ffa3;">${leader.ticker} (${leader.gain > -Infinity ? '+' + leader.gain.toFixed(1) + '%' : '0%'})</div>
+          <span class="muted" style="font-size: 0.7rem;">Net Return</span>
+          <div style="font-weight: 700; color: ${overallPnlPct >= 0 ? '#00ffa3' : '#ef4444'};">${overallPnlPct.toFixed(2)}%</div>
         </div>
         <div class="stat-item" style="background: rgba(255,255,255,0.01); padding: 12px; border-radius: 8px;">
-          <span class="muted" style="font-size: 0.7rem;">Risk Factor</span>
-          <div style="font-weight: 700; color: ${diversification < 3 ? '#ef4444' : '#34d399'};">${diversification < 3 ? 'High' : 'Low'}</div>
+          <span class="muted" style="font-size: 0.7rem;">Assets Count</span>
+          <div style="font-weight: 700;">${portfolio.length} Holdings</div>
         </div>
         <div class="stat-item" style="background: rgba(255,255,255,0.01); padding: 12px; border-radius: 8px;">
-          <span class="muted" style="font-size: 0.7rem;">Sector Focus</span>
-          <div style="font-weight: 700;">${topSector} (${((sectors[topSector] / totalCurrent) * 100).toFixed(0)}%)</div>
+          <span class="muted" style="font-size: 0.7rem;">Market Status</span>
+          <div style="font-weight: 700;">${state.marketStatus?.phase || 'OPEN'}</div>
         </div>
       `;
     }
 
-    if (diagnosisEl) {
-      diagnosisEl.innerHTML = `
-        • Your portfolio health score is <strong>${healthScore}/100</strong>. <br>
-        • <strong>Sector Bias:</strong> You are heavily weighted in ${topSector}. Any industry-specific correction will impact you significantly. <br>
-        • <strong>The Drag:</strong> ${laggard.ticker} is currently your weakest holding with a ${laggard.gain < Infinity ? laggard.gain.toFixed(1) : '0'}% drawdown.
-      `;
-    }
+    diagnosisEl.innerHTML = ai.diagnosis.split('\n').map(l => `• ${l}`).join('<br>');
+    prescriptionEl.innerHTML = ai.prescription.split('\n').map(l => `• ${l}`).join('<br>');
 
-    if (prescriptionEl) {
-      prescriptionEl.innerHTML = `
-        • <strong>Rebalance Suggestion:</strong> Trim 10% from ${leader.ticker !== 'N/A' ? leader.ticker : 'leaders'} to book profits and re-allocate into a defensive sector. <br>
-        • <strong>Exit Strategy:</strong> Set a strict stop-loss for ${laggard.ticker !== 'N/A' ? laggard.ticker : 'laggards'} to prevent further capital erosion. <br>
-        • <strong>Next Move:</strong> Look for stocks with high AI scores to improve your win rate.
-      `;
-    }
+    // 4. Stock-Wise Deep Dive
+    const stockAnalysisHtml = (ai.stockAnalysis || []).map(sa => `
+      <div style="padding: 12px; background: rgba(255,255,255,0.02); border-radius: 10px; border-left: 3px solid var(--accent); margin-bottom: 8px;">
+        <div style="font-weight: 800; font-size: 0.8rem; margin-bottom: 4px; color: var(--accent);">${sa.ticker}</div>
+        <div class="muted" style="font-size: 0.85rem; line-height: 1.4;">${sa.take}</div>
+      </div>
+    `).join('');
 
-    if (alertsEl) {
-      alertsEl.innerHTML = overallPnlPct > 10 
-        ? `<div style="background: rgba(0, 255, 163, 0.1); color: #00ffa3; padding: 10px; border-radius: 8px; font-size: 0.8rem; border: 1px solid #00ffa3;">🚀 <strong>Profit Booking Opportunity:</strong> Your portfolio is up ${overallPnlPct.toFixed(1)}%. Consider taking some gains.</div>`
-        : `<div style="background: rgba(239, 68, 68, 0.1); color: #ef4444; padding: 10px; border-radius: 8px; font-size: 0.8rem; border: 1px solid #ef4444;">⚠️ <strong>Risk Alert:</strong> Diversification is low. Add more sectors to reach an "Optimal" rating.</div>`;
+    const doctorAlerts = document.getElementById("doctor-alerts");
+    if (doctorAlerts) {
+      doctorAlerts.innerHTML = `
+        <h4 style="margin: 20px 0 12px; color: var(--text);">Stock-Wise Deep Dive</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 24px;">
+          ${stockAnalysisHtml}
+        </div>
+        ${ai.healthScore < 50 
+          ? `<div style="background: rgba(239, 68, 68, 0.1); color: #ef4444; padding: 10px; border-radius: 8px; font-size: 0.8rem; border: 1px solid #ef4444;">⚠️ <strong>High Risk Detected:</strong> Follow the AI prescription to safeguard capital.</div>`
+          : `<div style="background: rgba(0, 255, 163, 0.1); color: #00ffa3; padding: 10px; border-radius: 8px; font-size: 0.8rem; border: 1px solid #00ffa3;">✅ <strong>Portfolio Optimized:</strong> Your strategy aligns with current market momentum.</div>`}
+      `;
     }
 
     panel.scrollIntoView({ behavior: 'smooth' });
   } catch (err) {
     console.error("AI Doctor failed:", err);
-    alert("Financial intelligence engine encountered an error. Please try again.");
+    
+    // Fallback to local intelligence if API fails
+    console.log("⚡ Switching to Local Intelligence Fallback...");
+    const portfolio = Object.values(state.portfolio || {});
+    let totalInvested = 0, totalCurrent = 0;
+    portfolio.forEach(p => {
+      const live = state.livePrices[p.ticker.replace(".","_")] || {price: p.buyPrice};
+      totalInvested += Number(p.qty) * Number(p.buyPrice);
+      totalCurrent += Number(p.qty) * Number(live.price);
+    });
+    const overallPnlPct = totalInvested > 0 ? ((totalCurrent - totalInvested) / totalInvested) * 100 : 0;
+    
+    const localAi = {
+      healthScore: Math.round(Math.min(100, Math.max(0, 70 + overallPnlPct))),
+      diagnosis: overallPnlPct >= 0 
+        ? "Your portfolio is showing strong momentum with positive net returns. Diversification across sectors is maintaining stability."
+        : "Portfolio is currently underperforming market benchmarks. High concentration in specific assets may be increasing risk exposure.",
+      stockAnalysis: portfolio.map(p => {
+        const live = state.livePrices[p.ticker.replace(".","_")] || {};
+        const chg = live.change_pct || 0;
+        let take = "";
+        if (chg > 2) take = `Showing strong bullish momentum with a ${chg.toFixed(2)}% breakout. High relative strength in current trend.`;
+        else if (chg > 0) take = `Holding steady with ${chg.toFixed(2)}% gain. Technical structure remains intact with positive bias.`;
+        else if (chg > -2) take = `Minor consolidation (${chg.toFixed(2)}%). Found support at current levels, showing resilient behavior.`;
+        else take = `Under significant pressure recently (${chg.toFixed(2)}%). Momentum is bearish; monitor support levels closely for signs of reversal.`;
+        
+        return { ticker: p.ticker, take };
+      }),
+      prescription: "1. Rebalance overweight positions to manage sector risk.\n2. Set trailing stop-losses to protect capital during volatility.\n3. Monitor high-alpha AI picks for potential entry/exit signals."
+    };
+
+    // Update UI with local data
+    const panel = document.getElementById("portfolio-doctor-panel");
+    const scoreEl = document.getElementById("health-score-value");
+    const metricsGrid = document.getElementById("doctor-metrics-grid");
+    const diagnosisEl = document.getElementById("doctor-diagnosis");
+    const prescriptionEl = document.getElementById("doctor-prescription");
+
+    panel.classList.remove("hidden");
+    panel.style.display = "block";
+    panel.style.opacity = "1";
+    
+    if (scoreEl) {
+      scoreEl.textContent = localAi.healthScore;
+      scoreEl.style.color = localAi.healthScore > 70 ? '#00ffa3' : (localAi.healthScore > 40 ? '#fbbf24' : '#ef4444');
+    }
+
+    if (metricsGrid) {
+      metricsGrid.innerHTML = `
+        <div class="stat-item" style="background: rgba(255,255,255,0.01); padding: 12px; border-radius: 8px;">
+          <span class="muted" style="font-size: 0.7rem;">Net Return</span>
+          <div style="font-weight: 700; color: ${overallPnlPct >= 0 ? '#00ffa3' : '#ef4444'};">${overallPnlPct.toFixed(2)}%</div>
+        </div>
+        <div class="stat-item" style="background: rgba(255,255,255,0.01); padding: 12px; border-radius: 8px;">
+          <span class="muted" style="font-size: 0.7rem;">Assets Count</span>
+          <div style="font-weight: 700;">${portfolio.length} Holdings</div>
+        </div>
+        <div class="stat-item" style="background: rgba(255,255,255,0.01); padding: 12px; border-radius: 8px;">
+          <span class="muted" style="font-size: 0.7rem;">AI Status</span>
+          <div style="font-weight: 700; color: var(--warning);">LOCAL MODE</div>
+        </div>
+      `;
+    }
+
+    diagnosisEl.innerHTML = `• ${localAi.diagnosis}`;
+    prescriptionEl.innerHTML = localAi.prescription.split('\n').map(l => `• ${l}`).join('<br>');
+
+    const stockAnalysisHtml = localAi.stockAnalysis.map(sa => `
+      <div style="padding: 12px; background: rgba(255,255,255,0.02); border-radius: 10px; border-left: 3px solid var(--accent); margin-bottom: 8px;">
+        <div style="font-weight: 800; font-size: 0.8rem; margin-bottom: 4px; color: var(--accent);">${sa.ticker}</div>
+        <div class="muted" style="font-size: 0.85rem; line-height: 1.4;">${sa.take}</div>
+      </div>
+    `).join('');
+
+    const doctorAlerts = document.getElementById("doctor-alerts");
+    if (doctorAlerts) {
+      doctorAlerts.innerHTML = `
+        <h4 style="margin: 20px 0 12px; color: var(--text);">Stock-Wise Deep Dive (Heuristic)</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 24px;">
+          ${stockAnalysisHtml}
+        </div>
+        <div style="background: rgba(251, 191, 36, 0.1); color: #fbbf24; padding: 10px; border-radius: 8px; font-size: 0.8rem; border: 1px solid #fbbf24;">⚠️ <strong>API Connectivity Issue:</strong> Showing heuristic analysis while AI service is unreachable.</div>
+      `;
+    }
+
+    panel.scrollIntoView({ behavior: 'smooth' });
   }
 };
+
+window.toggleEarningsModal = function(show) {
+  const modal = document.getElementById("earningsModal");
+  if (modal) modal.classList.toggle("hidden", !show);
+};
+
+function renderEarnings() {
+  const container = document.getElementById("earnings-list");
+  const badge = document.getElementById("earnings-summary-badge");
+  if (!container) return;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const results = Object.values(state.earnings || {}).filter(item => {
+    if (!item.date) return false;
+    const itemDate = new Date(item.date);
+    return itemDate >= today;
+  });
+
+  if (badge) badge.textContent = `${results.length} Upcoming Results`;
+
+  if (results.length === 0) {
+    container.innerHTML = '<p class="muted" style="text-align: center;">No upcoming results tracked currently.</p>';
+    return;
+  }
+
+  // Sort by date ascending (closest first)
+  results.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  container.innerHTML = results.map(item => {
+    const isToday = new Date(item.date).toDateString() === new Date().toDateString();
+    const impactColor = item.expected_impact === "High" ? "var(--danger)" : "var(--accent)";
+    
+    return `
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid ${impactColor}; cursor: pointer; transition: all 0.2s;" class="hover-scale results-tooltip-container" onclick="window.showStockDetails('${item.ticker}')">
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <strong style="font-size: 1.1rem; color: var(--accent);">${item.ticker}</strong>
+            ${isToday ? '<span class="ctrl-badge" style="background: var(--danger); font-size: 0.6rem;">TODAY</span>' : ''}
+            <a href="https://finance.yahoo.com/quote/${item.ticker}" target="_blank" style="text-decoration: none; font-size: 0.72rem; color: var(--info); display: inline-flex; align-items: center; gap: 4px; margin-left: 8px;" class="hover-glow" onclick="event.stopPropagation();">
+              Source ↗
+            </a>
+          </div>
+          <div class="muted" style="font-size: 0.8rem; margin-top: 4px;">Revenue Est: ₹${formatVolume(item.revenue_avg || 0)} | EPS Est: ${item.earnings_avg || 'N/A'}</div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-weight: 800; font-size: 0.95rem;">${new Date(item.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</div>
+          <div style="font-size: 0.7rem; color: var(--muted); text-transform: uppercase; margin-top: 2px;">Impact: <span style="color: ${impactColor};">${item.expected_impact}</span></div>
+        </div>
+        <div class="tooltip-content">${getExpectedResultsHTML(item.ticker)}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderFIIDII() {
+  const fiiEl = document.getElementById("fii-net-flow");
+  const diiEl = document.getElementById("dii-net-flow");
+  const dateEl = document.getElementById("fiidii-date");
+  if (!fiiEl || !diiEl || !state.fiidii) return;
+
+  const data = state.fiidii;
+  let fiiData = Array.isArray(data) ? data.find(d => d.category === "FII/FPI") : null;
+  let diiData = Array.isArray(data) ? data.find(d => d.category === "DII") : null;
+
+  if (fiiData) {
+    const val = parseFloat(fiiData.netValue);
+    fiiEl.textContent = `${val >= 0 ? '+' : ''}₹${val.toLocaleString('en-IN')} Cr`;
+    fiiEl.style.color = val >= 0 ? "var(--accent)" : "var(--danger)";
+    if (dateEl) dateEl.textContent = `Latest Data: ${fiiData.date}`;
+  }
+
+  if (diiData) {
+    const val = parseFloat(diiData.netValue);
+    diiEl.textContent = `${val >= 0 ? '+' : ''}₹${val.toLocaleString('en-IN')} Cr`;
+    diiEl.style.color = val >= 0 ? "var(--accent)" : "var(--danger)";
+  }
+}
+
+function renderCommodities(commodities) {
+  const brentPrice = document.getElementById("brent-price");
+  const brentChange = document.getElementById("brent-change");
+  if (!brentPrice || !brentChange) return;
+
+  // Brent Crude ticker key is BZ_F (from BZ=F)
+  const brent = commodities["BZ_F"];
+  if (brent) {
+    brentPrice.textContent = `$${brent.price.toFixed(2)}`;
+    const cls = brent.change_pct >= 0 ? "positive" : "negative";
+    brentChange.textContent = `${brent.change_pct >= 0 ? '+' : ''}${brent.change_pct.toFixed(2)}%`;
+    brentChange.className = cls;
+  }
+}
+
+function initMobileUI() {
+  const drawerToggle = document.getElementById("mobile-drawer-toggle");
+  const drawerClose = document.getElementById("mobile-drawer-close");
+  const drawerBackdrop = document.getElementById("mobile-drawer-backdrop");
+  const drawer = document.getElementById("mobile-drawer");
+  
+  function openDrawer() {
+    drawer?.classList.add("open");
+    drawerBackdrop?.classList.add("active");
+  }
+  
+  function closeDrawer() {
+    drawer?.classList.remove("open");
+    drawerBackdrop?.classList.remove("active");
+  }
+  
+  drawerToggle?.addEventListener("click", openDrawer);
+  drawerClose?.addEventListener("click", closeDrawer);
+  drawerBackdrop?.addEventListener("click", closeDrawer);
+  
+  // Bind Drawer Navigation Links
+  const drawerItems = document.querySelectorAll(".drawer-menu-item");
+  drawerItems.forEach(item => {
+    item.addEventListener("click", (e) => {
+      const tabName = item.dataset.tab;
+      if (tabName) {
+        if (item.tagName === "A" && item.getAttribute("href")?.startsWith("#")) {
+          e.preventDefault();
+        }
+        activateTab(tabName);
+        closeDrawer();
+      }
+    });
+  });
+  
+  // Expandable Mobile Search Toggle
+  const searchToggle = document.getElementById("mobile-search-toggle");
+  const searchOverlay = document.getElementById("mobile-search-overlay");
+  const searchInput = document.getElementById("mobile-search-input");
+  
+  searchToggle?.addEventListener("click", () => {
+    const isActive = searchOverlay?.classList.toggle("active");
+    if (isActive) {
+      searchInput?.focus();
+    }
+  });
+  
+  // Hook mobile search input to filter dashboard symbols or news
+  searchInput?.addEventListener("input", (e) => {
+    const val = e.target.value;
+    const activeTabEl = document.querySelector(".drawer-menu-item.active, .nav-pill.active");
+    const activeTab = activeTabEl?.dataset.tab || "live";
+    
+    if (activeTab === "news") {
+      const newsInput = document.getElementById("news-input");
+      if (newsInput) {
+        newsInput.value = val;
+        renderNews();
+      }
+    } else {
+      const liveSearchInput = document.getElementById("live-search");
+      if (liveSearchInput) {
+        liveSearchInput.value = val;
+        renderDashboard();
+      }
+    }
+  });
+
+  // Bottom Quick Action Buttons
+  const actionTrade = document.getElementById("mobile-action-trade");
+  const actionChat = document.getElementById("mobile-action-chat");
+  const actionRefresh = document.getElementById("mobile-action-refresh");
+  const drawerChatLink = document.getElementById("mobile-chat-link");
+  const drawerLogoutLink = document.getElementById("mobile-logout-link");
+  const drawerLoginLink = document.getElementById("mobile-login-link");
+  
+  actionTrade?.addEventListener("click", () => {
+    window.openTxModal("buy", "");
+  });
+  
+  function toggleAIChat(e) {
+    if (e) e.preventDefault();
+    const chatWin = document.getElementById("chatWindow");
+    chatWin?.classList.toggle("hidden");
+    closeDrawer();
+  }
+  
+  actionChat?.addEventListener("click", toggleAIChat);
+  drawerChatLink?.addEventListener("click", toggleAIChat);
+  
+  actionRefresh?.addEventListener("click", () => {
+    actionRefresh.style.transform = "rotate(360deg)";
+    actionRefresh.style.transition = "transform 0.5s ease";
+    renderDashboard();
+    renderNews();
+    setTimeout(() => {
+      actionRefresh.style.transform = "none";
+      actionRefresh.style.transition = "none";
+    }, 500);
+  });
+  
+  drawerLogoutLink?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    await signOut(auth);
+    closeDrawer();
+  });
+  
+  drawerLoginLink?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (!state.user) {
+      const authGate = document.getElementById("authGate");
+      authGate?.classList.remove("hidden");
+    } else {
+      activateTab("profile");
+    }
+    closeDrawer();
+  });
+
+  // Automatically detect screen size on load/resize
+  function handleScreenResize() {
+    const width = window.innerWidth;
+    const viewMode = localStorage.getItem("stocksense_view_mode") || "auto";
+    if (viewMode === "auto") {
+      const isMobile = width <= 768;
+      document.body.classList.toggle("is-mobile", isMobile);
+    } else {
+      document.body.classList.toggle("is-mobile", viewMode === "mobile");
+    }
+  }
+  
+  window.addEventListener("resize", handleScreenResize);
+  handleScreenResize();
+}
 
 // Auto-bind to ensure click works even if onclick in HTML is blocked
 document.addEventListener("DOMContentLoaded", () => {
@@ -1877,6 +2727,12 @@ document.addEventListener("DOMContentLoaded", () => {
   setLanguage(savedLang);
   const langSelector = document.getElementById("languageSelect");
   if (langSelector) langSelector.value = savedLang;
+
+  const savedMode = localStorage.getItem("stocksense_view_mode") || "auto";
+  window.setViewMode(savedMode);
+  
+  // Initialize mobile interactions
+  initMobileUI();
 });
 
 console.log("🚀 StockSense App Engine Loaded Successfully");

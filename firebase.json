@@ -1,0 +1,49 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "venv",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.pyc"
+      ],
+      "runtime": "python311"
+    }
+  ],
+  "hosting": {
+    "public": "frontend",
+    "ignore": [
+      "firebase.json",
+      "database.rules.json",
+      "*.py",
+      "*.cpp",
+      "*.exe",
+      "*.md",
+      "serviceAccountKey.json",
+      "node_modules/**",
+      "__pycache__/**",
+      "*.pyc",
+      "tempCodeRunnerFile.*",
+      "requirements.txt",
+      "deploy.md",
+      "README.md",
+      "Predictor here.md"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "database": {
+    "rules": "database/database.rules.json"
+  },
+  "firestore": {
+    "rules": "database/firestore.rules",
+    "indexes": "database/firestore.indexes.json"
+  }
+}

@@ -1,8 +1,2 @@
 [build]
   publish = "frontend"
-  command = "echo 'Building StockSense frontend'"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
