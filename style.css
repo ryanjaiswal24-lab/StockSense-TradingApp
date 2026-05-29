@@ -806,8 +806,8 @@ body[data-accent="cyan"] {
   box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.2);
 }
 
-/* Media Query for Mobile Device Detection */
-@media (max-width: 768px), body.force-mobile {
+/* Responsive View Mode Triggered via Body Class */
+body.is-mobile {
   .mobile-header, .mobile-quick-actions {
     display: flex;
   }

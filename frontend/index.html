@@ -207,7 +207,26 @@
             <div id="ai-market-pulse-container"></div>
           </div>
 
-          <div id="aiGrid" class="picks-grid"></div>
+          <div class="ai-sub-tabs" style="display: flex; gap: 12px; margin-bottom: 24px; border-bottom: 1px solid var(--line); padding-bottom: 8px;">
+            <button id="ai-tab-tech-btn" class="ai-sub-pill active" style="font-size: 0.9rem; font-weight: 700; padding: 8px 18px; border: none; background: rgba(255,255,255,0.08); color: #fff; border-radius: 99px; cursor: pointer; transition: all 0.2s;">Technical & Sentiment</button>
+            <button id="ai-tab-val-btn" class="ai-sub-pill" style="font-size: 0.9rem; font-weight: 700; padding: 8px 18px; border: none; background: transparent; color: var(--muted); border-radius: 99px; cursor: pointer; transition: all 0.2s;">Intrinsic Valuation Model</button>
+          </div>
+
+          <!-- Technical & Sentiment container -->
+          <div id="ai-tech-container">
+            <div id="aiGrid" class="picks-grid"></div>
+          </div>
+
+          <!-- Intrinsic Valuation Model container -->
+          <div id="ai-val-container" class="hidden">
+            <div class="val-filters" style="display: flex; gap: 10px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 4px;">
+              <span class="ctrl-badge active" id="val-filter-all" style="cursor: pointer;" onclick="window.filterValuation('all')">All Valuations</span>
+              <span class="ctrl-badge" id="val-filter-undervalued" style="cursor: pointer;" onclick="window.filterValuation('Undervalued')">🟢 Undervalued</span>
+              <span class="ctrl-badge" id="val-filter-fair" style="cursor: pointer;" onclick="window.filterValuation('Fair Value')">🟡 Fair Value</span>
+              <span class="ctrl-badge" id="val-filter-overvalued" style="cursor: pointer;" onclick="window.filterValuation('Overvalued')">🔴 Overvalued</span>
+            </div>
+            <div id="aiValuationGrid" class="picks-grid"></div>
+          </div>
 
           <!-- Curated Intelligence Sections -->
           <div class="curated-intelligence-container" style="margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">

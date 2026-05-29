@@ -1,0 +1,20 @@
+# Firebase Security
+serviceAccountKey.json
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Large data
+*.log
+node_modules/

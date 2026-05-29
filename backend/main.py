@@ -217,11 +217,164 @@ def calculate_composite_score(symbol, info, history, market_context=None):
         "w52_low": info.get('fiftyTwoWeekLow', support)
     }
 
+def calculate_valuation_model(symbol, info, sector_avg_pe):
+    c_price = info.get('currentPrice') or info.get('regularMarketPrice')
+    if not c_price:
+        return None
+        
+    eps = info.get('trailingEps') or info.get('forwardEps')
+    pe = info.get('trailingPE', info.get('forwardPE', 0))
+    
+    # Fallbacks for EPS
+    if not eps or eps <= 0:
+        if pe and pe > 0:
+            eps = c_price / pe
+        else:
+            # Fallback to an assumed 5% earnings yield (PE of 20)
+            eps = c_price * 0.05
+            
+    # Fallback for PE
+    if not pe or pe <= 0:
+        pe = c_price / eps if eps > 0 else 20
+        
+    # Growth rate g (clamped between 5% and 25%)
+    g_val = info.get('earningsGrowth') or info.get('revenueGrowth') or info.get('earningsQuarterlyGrowth') or 0.12
+    if g_val < 0.05:
+        g_val = 0.05
+    elif g_val > 0.25:
+        g_val = 0.25
+        
+    # 1. PE Valuation (Peer Valuation)
+    sector = info.get('sector', 'Emerging Sector')
+    fair_pe = sector_avg_pe.get(sector, 22.0)  # Default to Nifty average if sector not found
+    if fair_pe < 10 or fair_pe > 50:
+        fair_pe = 22.0  # Keep it sane
+    intrinsic_pe = eps * fair_pe
+    
+    pe_status = "Fair Value"
+    pe_score = 0
+    if c_price < 0.9 * intrinsic_pe:
+        pe_status = "Undervalued"
+        pe_score = 1
+    elif c_price > 1.1 * intrinsic_pe:
+        pe_status = "Overvalued"
+        pe_score = -1
+        
+    # 2. Graham Formula
+    # V = EPS * (8.5 + 2g) where g is expected growth rate in %
+    g_pct = g_val * 100
+    v_graham = eps * (8.5 + 2 * g_pct)
+    
+    graham_status = "Fair Value"
+    graham_score = 0
+    if c_price < 0.9 * v_graham:
+        graham_status = "Undervalued"
+        graham_score = 1
+    elif c_price > 1.1 * v_graham:
+        graham_status = "Overvalued"
+        graham_score = -1
+        
+    # 3. DCF Method
+    # CAPM Discount Rate: r = Rf + beta * ERP
+    # India Rf is ~7.0%, ERP is ~6.0%
+    beta = info.get('beta') or 1.0
+    r = 0.07 + beta * 0.06
+    if r < 0.08: r = 0.08
+    elif r > 0.15: r = 0.15
+    
+    # 5-Year EPS Projection
+    eps_proj = []
+    curr_eps = eps
+    for year in range(1, 6):
+        curr_eps = curr_eps * (1 + g_val)
+        eps_proj.append(curr_eps)
+        
+    # Present Value of 5-year Cash Flows
+    pv_cf = 0
+    for year, cf in enumerate(eps_proj, 1):
+        pv_cf += cf / ((1 + r) ** year)
+        
+    # Terminal Value at Year 5 (Terminal growth gt = 4%)
+    g_t = 0.04
+    tv = eps_proj[-1] * (1 + g_t) / (r - g_t)
+    pv_tv = tv / ((1 + r) ** 5)
+    
+    intrinsic_dcf = pv_cf + pv_tv
+    
+    dcf_status = "Fair Value"
+    dcf_score = 0
+    if c_price < 0.9 * intrinsic_dcf:
+        dcf_status = "Undervalued"
+        dcf_score = 1
+    elif c_price > 1.1 * intrinsic_dcf:
+        dcf_status = "Overvalued"
+        dcf_score = -1
+        
+    # 4. PEG Ratio
+    peg = pe / g_pct if g_pct > 0 else 1.0
+    peg_status = "Fair Value"
+    peg_score = 0
+    if peg < 0.9:
+        peg_status = "Cheap"
+        peg_score = 1
+    elif peg > 1.2:
+        peg_status = "Expensive"
+        peg_score = -1
+        
+    # Consensus
+    net_score = pe_score + graham_score + dcf_score + peg_score
+    if net_score >= 2:
+        consensus_status = "Undervalued"
+    elif net_score <= -2:
+        consensus_status = "Overvalued"
+    else:
+        consensus_status = "Fair Value"
+        
+    consensus_intrinsic = (intrinsic_pe + v_graham + intrinsic_dcf) / 3
+    margin_of_safety = ((consensus_intrinsic - c_price) / consensus_intrinsic) * 100 if consensus_intrinsic > 0 else 0
+    
+    return {
+        "ticker": symbol,
+        "name": info.get('longName', symbol),
+        "sector": sector,
+        "current_price": round(c_price, 2),
+        "eps": round(eps, 2),
+        "pe": round(pe, 2),
+        "growth": round(g_val * 100, 1),
+        "beta": round(beta, 2),
+        "discount_rate": round(r * 100, 1),
+        "pe_valuation": {
+            "intrinsic_value": round(intrinsic_pe, 2),
+            "status": pe_status,
+            "fair_pe": round(fair_pe, 1)
+        },
+        "graham_valuation": {
+            "intrinsic_value": round(v_graham, 2),
+            "status": graham_status
+        },
+        "dcf_valuation": {
+            "intrinsic_value": round(intrinsic_dcf, 2),
+            "status": dcf_status
+        },
+        "peg_valuation": {
+            "peg_ratio": round(peg, 2),
+            "status": peg_status
+        },
+        "consensus": {
+            "status": consensus_status,
+            "intrinsic_value": round(consensus_intrinsic, 2),
+            "margin_of_safety": round(margin_of_safety, 1)
+        },
+        "updated_at": int(time.time() * 1000)
+    }
+
 def run_ai_predictor_loop():
     logger.info("AI Predictor Thread started.")
     while True:
         try:
             results, stock_info, raw_metrics_list = {}, {}, []
+            stocks_info_map = {}
+            sector_pes = {}
             # Fetch current market context for better suggestions
             market_context = db.reference("market_sentiment").get() or {"sentiment": "Neutral", "change_pct": 0}
             
@@ -311,6 +464,18 @@ def run_ai_predictor_loop():
                         "dividend_yield": div_yield
                     })
                     
+                    # Track info and PEs for valuation modeling
+                    stocks_info_map[safe_key] = {
+                        "symbol": symbol,
+                        "info": info
+                    }
+                    sector = info.get('sector', 'Emerging Sector')
+                    pe_val = info.get('trailingPE', info.get('forwardPE'))
+                    if pe_val and pe_val > 0:
+                        if sector not in sector_pes:
+                            sector_pes[sector] = []
+                        sector_pes[sector].append(pe_val)
+                    
                     time.sleep(0.5)
                 except Exception as e:
                     logger.debug(f"Error processing {symbol}: {e}")
@@ -318,6 +483,26 @@ def run_ai_predictor_loop():
             if results:
                 db.reference("ai_picks").set(results)
                 db.reference("stocks").update(stock_info)
+                
+                # Calculate sector average PEs
+                sector_average_pe = {}
+                for sec, pes in sector_pes.items():
+                    if pes:
+                        sector_average_pe[sec] = sum(pes) / len(pes)
+
+                # Calculate valuation model picks
+                valuation_results = {}
+                for s_key, data in stocks_info_map.items():
+                    try:
+                        val_res = calculate_valuation_model(data["symbol"], data["info"], sector_average_pe)
+                        if val_res:
+                            valuation_results[s_key] = val_res
+                    except Exception as e:
+                        logger.error(f"Valuation calculation failed for {data['symbol']}: {e}")
+
+                if valuation_results:
+                    db.reference("valuation_picks").set(valuation_results)
+                    logger.info(f"AI Valuation picks updated in Firebase for {len(valuation_results)} stocks.")
                 
                 # Process Curated Groups
                 best_performers = []

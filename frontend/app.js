@@ -68,6 +68,8 @@ const state = {
   news: [],
   marketStatus: null,
   aiPicks: {},
+  valuationPicks: {},
+  valuationFilter: 'all',
   watchlist: {},
   portfolio: {},
   transactions: {},
@@ -890,6 +892,11 @@ function startListeners() {
   onValue(ref(db, "ai_picks"), (snapshot) => {
     state.aiPicks = snapshot.val() || {};
     renderAIPicks();
+  });
+
+  onValue(ref(db, "valuation_picks"), (snapshot) => {
+    state.valuationPicks = snapshot.val() || {};
+    renderValuationPicks();
   });
 
   onValue(ref(db, "market_indices"), (snapshot) => {
@@ -1858,6 +1865,162 @@ function renderAIPicks() {
       suggestMoreBtn.style.display = "inline-flex";
     }
   }
+}
+
+// Subtab event switching and rendering functions for Intrinsic Valuation model
+setupValuationTabs();
+
+function setupValuationTabs() {
+  const techBtn = document.getElementById("ai-tab-tech-btn");
+  const valBtn = document.getElementById("ai-tab-val-btn");
+  const techContainer = document.getElementById("ai-tech-container");
+  const valContainer = document.getElementById("ai-val-container");
+
+  if (techBtn && valBtn && techContainer && valContainer) {
+    techBtn.addEventListener("click", () => {
+      techBtn.classList.add("active");
+      valBtn.classList.remove("active");
+      techBtn.style.background = "rgba(255, 255, 255, 0.08)";
+      techBtn.style.color = "#fff";
+      valBtn.style.background = "transparent";
+      valBtn.style.color = "var(--muted)";
+      techContainer.classList.remove("hidden");
+      valContainer.classList.add("hidden");
+    });
+
+    valBtn.addEventListener("click", () => {
+      techBtn.classList.remove("active");
+      valBtn.classList.add("active");
+      techBtn.style.background = "transparent";
+      techBtn.style.color = "var(--muted)";
+      valBtn.style.background = "rgba(255, 255, 255, 0.08)";
+      valBtn.style.color = "#fff";
+      techContainer.classList.add("hidden");
+      valContainer.classList.remove("hidden");
+      renderValuationPicks();
+    });
+  } else {
+    setTimeout(setupValuationTabs, 100);
+  }
+}
+
+window.filterValuation = function(category) {
+  state.valuationFilter = category;
+  document.querySelectorAll(".val-filters .ctrl-badge").forEach(el => {
+    el.classList.remove("active");
+  });
+  const filterIdMap = {
+    "all": "val-filter-all",
+    "Undervalued": "val-filter-undervalued",
+    "Fair Value": "val-filter-fair",
+    "Overvalued": "val-filter-overvalued"
+  };
+  const activeEl = document.getElementById(filterIdMap[category]);
+  if (activeEl) activeEl.classList.add("active");
+  renderValuationPicks();
+};
+
+function renderValuationPicks() {
+  const grid = document.getElementById("aiValuationGrid");
+  if (!grid) return;
+
+  const picks = Object.values(state.valuationPicks || {});
+  if (!picks.length) {
+    grid.innerHTML = emptyState("AI Valuation Model is analyzing the market. Results appearing soon.");
+    return;
+  }
+
+  // Filter
+  let filtered = [...picks];
+  if (state.valuationFilter !== "all") {
+    filtered = filtered.filter(p => p.consensus && p.consensus.status === state.valuationFilter);
+  }
+
+  if (!filtered.length) {
+    grid.innerHTML = emptyState("No stocks match this valuation criteria.");
+    return;
+  }
+
+  // Sort: Undervalued first, sorted by Margin of Safety (highest to lowest), then Fair Value, then Overvalued.
+  filtered.sort((a, b) => {
+    const statusOrder = { "Undervalued": 1, "Fair Value": 2, "Overvalued": 3 };
+    const orderA = statusOrder[a.consensus?.status || "Fair Value"] || 2;
+    const orderB = statusOrder[b.consensus?.status || "Fair Value"] || 2;
+    if (orderA !== orderB) return orderA - orderB;
+    return (b.consensus?.margin_of_safety || 0) - (a.consensus?.margin_of_safety || 0);
+  });
+
+  grid.innerHTML = filtered.map(stock => {
+    const status = stock.consensus?.status || "Fair Value";
+    const mos = stock.consensus?.margin_of_safety || 0;
+    
+    let badgeCls = "watchlist";
+    let badgeColor = "var(--warning)";
+    let safetyCls = "neutral";
+    let safetyColor = "var(--muted)";
+    
+    if (status === "Undervalued") {
+      badgeCls = "strong-buy";
+      badgeColor = "var(--accent)";
+      safetyCls = "positive";
+      safetyColor = "var(--accent)";
+    } else if (status === "Overvalued") {
+      badgeCls = "weak";
+      badgeColor = "var(--danger)";
+      safetyCls = "negative";
+      safetyColor = "var(--danger)";
+    }
+
+    const shortTicker = stock.ticker.split(".")[0];
+
+    return `
+      <article class="price-card hover-glow results-tooltip-container" style="border-left: 4px solid ${badgeColor}; transition: all 0.2s ease; padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span class="ai-label ${badgeCls}" style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px;">${status}</span>
+          <span style="font-size: 0.65rem; color: var(--muted); font-weight: 600;">Margin of Safety: <span class="${safetyCls}" style="color: ${safetyColor}; font-weight: 800;">${mos >= 0 ? "+" : ""}${mos}%</span></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <h4 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #fff;">${shortTicker}</h4>
+          <span style="font-size: 0.65rem; color: var(--muted); font-weight: 600;">₹${stock.current_price.toLocaleString("en-IN")}</span>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0;">
+          <div style="background: rgba(255,255,255,0.02); padding: 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+            <div style="font-size: 0.55rem; color: var(--muted); text-transform: uppercase;">Consensus Value</div>
+            <div style="font-size: 0.85rem; font-weight: 700; color: #fff; margin-top: 2px;">₹${(stock.consensus?.intrinsic_value || 0).toLocaleString("en-IN")}</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.02); padding: 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+            <div style="font-size: 0.55rem; color: var(--muted); text-transform: uppercase;">Growth Expect.</div>
+            <div style="font-size: 0.85rem; font-weight: 700; color: var(--info); margin-top: 2px;">${stock.growth}%</div>
+          </div>
+        </div>
+        
+        <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px; margin-top: 4px;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.65rem; margin-bottom: 3px;">
+            <span class="muted">P/E Valuation (Fair PE: ${stock.pe_valuation?.fair_pe}):</span>
+            <span style="font-weight: 700; color: ${stock.pe_valuation?.status === 'Undervalued' ? 'var(--accent)' : stock.pe_valuation?.status === 'Overvalued' ? 'var(--danger)' : '#fff'};">₹${stock.pe_valuation?.intrinsic_value}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.65rem; margin-bottom: 3px;">
+            <span class="muted">Graham Formula (8.5 + 2g):</span>
+            <span style="font-weight: 700; color: ${stock.graham_valuation?.status === 'Undervalued' ? 'var(--accent)' : stock.graham_valuation?.status === 'Overvalued' ? 'var(--danger)' : '#fff'};">₹${stock.graham_valuation?.intrinsic_value}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.65rem; margin-bottom: 3px;">
+            <span class="muted">DCF Model (CAPM: ${stock.discount_rate}%):</span>
+            <span style="font-weight: 700; color: ${stock.dcf_valuation?.status === 'Undervalued' ? 'var(--accent)' : stock.dcf_valuation?.status === 'Overvalued' ? 'var(--danger)' : '#fff'};">₹${stock.dcf_valuation?.intrinsic_value}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.65rem;">
+            <span class="muted">PEG Ratio (PE/Growth):</span>
+            <span style="font-weight: 700; color: ${stock.peg_valuation?.status === 'Cheap' ? 'var(--accent)' : stock.peg_valuation?.status === 'Expensive' ? 'var(--danger)' : '#fff'};">${stock.peg_valuation?.status === 'Cheap' ? 'Cheap' : stock.peg_valuation?.status === 'Expensive' ? 'Expensive' : 'Fair'} (${stock.peg_valuation?.peg_ratio})</span>
+          </div>
+        </div>
+
+        <div style="margin-top: 8px; display: flex; gap: 8px;">
+          <button class="btn btn-primary" onclick="window.openTxModal('buy', '${stock.ticker}')" style="flex: 1; border-radius: 8px; height: 32px; font-size: 0.72rem; font-weight: 700; padding: 0;">Buy</button>
+          <button class="btn btn-ghost" onclick="window.jumpToStock('${stock.ticker}')" style="flex: 1; border-radius: 8px; height: 32px; font-size: 0.72rem; font-weight: 700; padding: 0; border: 1px solid var(--line);">Details &rarr;</button>
+        </div>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderAIMarketSuggestion(data) {

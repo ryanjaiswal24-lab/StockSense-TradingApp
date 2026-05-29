@@ -134,6 +134,10 @@
           <span>User Profile</span>
         </a>
         <div class="drawer-separator"></div>
+        <a href="#" id="mobile-switch-desktop" class="drawer-menu-item" style="color: var(--accent);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="2" y1="20" x2="22" y2="20"/><line x1="12" y1="17" x2="12" y2="20"/></svg>
+          <span>Desktop Version</span>
+        </a>
         <a href="#" id="mobile-chat-link" class="drawer-menu-item">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span>Specialist AI Chat</span>
@@ -187,6 +191,9 @@
             <span id="profile-email">Not logged in</span>
           </div>
         </div>
+        <button id="btn-desktop-switch-mobile" class="btn btn-ghost" style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem;" title="Switch to Mobile View">
+          <span>📱</span> <span>Mobile View</span>
+        </button>
         <button id="btn-chat-toggle" class="btn btn-primary" style="display: flex; align-items: center; gap: 6px;">💬 AI Chat</button>
         <button id="loginBtn" class="btn btn-primary">Login</button>
         <button id="logoutBtn" class="btn btn-ghost" style="display:none;">Logout</button>
@@ -207,7 +214,27 @@
             <div id="ai-market-pulse-container"></div>
           </div>
 
-          <div id="aiGrid" class="picks-grid"></div>
+          <!-- AI Sub-Section Tabs -->
+          <div class="ai-sub-tabs" style="display: flex; gap: 12px; margin-bottom: 24px; border-bottom: 1px solid var(--line); padding-bottom: 8px;">
+            <button id="ai-tab-tech-btn" class="ai-sub-pill active" style="font-size: 0.9rem; font-weight: 700; padding: 8px 18px; border: none; background: rgba(255,255,255,0.08); color: #fff; border-radius: 99px; cursor: pointer; transition: all 0.2s;">Technical & Sentiment</button>
+            <button id="ai-tab-val-btn" class="ai-sub-pill" style="font-size: 0.9rem; font-weight: 700; padding: 8px 18px; border: none; background: transparent; color: var(--muted); border-radius: 99px; cursor: pointer; transition: all 0.2s;">Intrinsic Valuation Model</button>
+          </div>
+
+          <!-- Technical & Sentiment container -->
+          <div id="ai-tech-container">
+            <div id="aiGrid" class="picks-grid"></div>
+          </div>
+
+          <!-- Intrinsic Valuation Model container -->
+          <div id="ai-val-container" class="hidden">
+            <div class="val-filters" style="display: flex; gap: 10px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 4px;">
+              <span class="ctrl-badge active" id="val-filter-all" style="cursor: pointer;" onclick="window.filterValuation('all')">All Valuations</span>
+              <span class="ctrl-badge" id="val-filter-undervalued" style="cursor: pointer;" onclick="window.filterValuation('Undervalued')">🟢 Undervalued</span>
+              <span class="ctrl-badge" id="val-filter-fair" style="cursor: pointer;" onclick="window.filterValuation('Fair Value')">🟡 Fair Value</span>
+              <span class="ctrl-badge" id="val-filter-overvalued" style="cursor: pointer;" onclick="window.filterValuation('Overvalued')">🔴 Overvalued</span>
+            </div>
+            <div id="aiValuationGrid" class="picks-grid"></div>
+          </div>
 
           <!-- Curated Intelligence Sections -->
           <div class="curated-intelligence-container" style="margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">

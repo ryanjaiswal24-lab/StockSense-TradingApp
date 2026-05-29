@@ -1,0 +1,13 @@
+services:
+  - type: worker
+    name: stocksense-backend
+    env: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: python backend/predictor.py
+    envVars:
+      - key: FIREBASE_KEY
+        sync: false
+      - key: FIREBASE_DATABASE_URL
+        value: https://stockscene-560d7-default-rtdb.asia-southeast1.firebasedatabase.app
+      - key: POLL_INTERVAL
+        value: "30"
